@@ -3,14 +3,25 @@ mod embeddings;
 mod vector_store;
 mod llm;
 mod federation;
+mod braille_embed;
 
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
-use tauri::State;
+use tauri::{State, Emitter};
+
+fn truncate_safe(s: &str, max_chars: usize) -> String {
+    if s.chars().count() <= max_chars {
+        s.to_string()
+    } else {
+        let truncated: String = s.chars().take(max_chars).collect();
+        format!("{}...", truncated)
+    }
+}
 
 pub struct AppState {
     pub vector_store: Mutex<vector_store::VectorStore>,
     pub embedder: Mutex<Option<embeddings::Embedder>>,
+    pub braille_embedder: Mutex<braille_embed::BrailleEmbedder>,
     pub llm: Mutex<Option<llm::LocalLLM>>,
     pub federation: Mutex<federation::FederationClient>,
 }
@@ -62,7 +73,9 @@ fn get_vault_stats(state: State<AppState>) -> Result<VaultStats, String> {
 }
 
 #[tauri::command]
-async fn import_messages(source: String, file_path: Option<String>, state: State<'_, AppState>) -> Result<(), String> {
+async fn import_messages(source: String, file_path: Option<String>, state: State<'_, AppState>, app: tauri::AppHandle) -> Result<(), String> {
+    let _ = app.emit("status", "Finding your messages...");
+    
     let messages = match source.as_str() {
         "imessage" => ingestors::imessage::import()?,
         "whatsapp" => {
@@ -76,17 +89,22 @@ async fn import_messages(source: String, file_path: Option<String>, state: State
         _ => return Err(format!("Unknown source: {}", source)),
     };
     
-    let mut embedder_guard = state.embedder.lock().map_err(|e| e.to_string())?;
-    let embedder = embedder_guard.get_or_insert_with(|| {
-        embeddings::Embedder::new().expect("Failed to initialize embedder")
-    });
+    let _ = app.emit("status", format!("Found {} messages! Creating memory index...", messages.len()));
     
-    let embeddings = embedder.embed_batch(&messages).map_err(|e| e.to_string())?;
+    let start = std::time::Instant::now();
+    
+    let mut braille = state.braille_embedder.lock().map_err(|e| e.to_string())?;
+    let embeddings = braille.embed_batch(&messages);
+    
+    let elapsed = start.elapsed();
+    let _ = app.emit("status", format!("Indexed {} messages in {:.1}s. Saving to vault...", messages.len(), elapsed.as_secs_f32()));
     
     let mut store = state.vector_store.lock().map_err(|e| e.to_string())?;
     for (msg, embedding) in messages.iter().zip(embeddings.iter()) {
         store.insert(msg, embedding.clone(), &source).map_err(|e| e.to_string())?;
     }
+    
+    let _ = app.emit("status", format!("Your vault is ready with {} memories!", messages.len()));
     
     Ok(())
 }
@@ -97,12 +115,8 @@ async fn query_vault(prompt: String, state: State<'_, AppState>) -> Result<Query
         return Err("For your security, please disconnect Wi-Fi to use the Vault.".to_string());
     }
     
-    let mut embedder_guard = state.embedder.lock().map_err(|e| e.to_string())?;
-    let embedder = embedder_guard.get_or_insert_with(|| {
-        embeddings::Embedder::new().expect("Failed to initialize embedder")
-    });
-    
-    let query_embedding = embedder.embed(&prompt).map_err(|e| e.to_string())?;
+    let mut braille = state.braille_embedder.lock().map_err(|e| e.to_string())?;
+    let query_embedding = braille.embed(&prompt);
     
     let store = state.vector_store.lock().map_err(|e| e.to_string())?;
     let results = store.search(&query_embedding, 5)?;
@@ -117,11 +131,7 @@ async fn query_vault(prompt: String, state: State<'_, AppState>) -> Result<Query
         .iter()
         .take(3)
         .map(|(text, _)| {
-            if text.len() > 50 {
-                format!("{}...", &text[..50])
-            } else {
-                text.clone()
-            }
+            truncate_safe(text, 50)
         })
         .collect();
     
@@ -238,6 +248,7 @@ pub fn run() {
         .manage(AppState {
             vector_store: Mutex::new(vector_store),
             embedder: Mutex::new(None),
+            braille_embedder: Mutex::new(braille_embed::BrailleEmbedder::new()),
             llm: Mutex::new(None),
             federation: Mutex::new(federation::FederationClient::new(
                 federation::FederationConfig::default()

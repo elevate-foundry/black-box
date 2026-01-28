@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { 
   Shield, 
   Wifi, 
@@ -57,6 +58,7 @@ function App() {
     collective_users: 0,
   });
   const [whatsappDetected, setWhatsappDetected] = useState<boolean | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string>("");
 
   useEffect(() => {
     checkNetworkStatus();
@@ -64,7 +66,15 @@ function App() {
     loadFederationStatus();
     checkWhatsAppInstalled();
     const interval = setInterval(checkNetworkStatus, 3000);
-    return () => clearInterval(interval);
+    
+    const unlisten = listen<string>("status", (event) => {
+      setStatusMessage(event.payload);
+    });
+    
+    return () => {
+      clearInterval(interval);
+      unlisten.then(fn => fn());
+    };
   }, []);
 
   useEffect(() => {
@@ -104,9 +114,6 @@ function App() {
     try {
       const status = await invoke<{ available: boolean; message_count: number }>("check_whatsapp_available");
       setWhatsappDetected(status.available);
-      if (status.available && status.message_count > 0) {
-        setVaultStats(prev => ({ ...prev, total_messages: status.message_count }));
-      }
     } catch (e) {
       console.error("WhatsApp check failed:", e);
       setWhatsappDetected(false);
@@ -241,6 +248,7 @@ function App() {
             whatsappDetected={whatsappDetected}
             isImporting={isImporting}
             onImport={handleImportWhatsApp}
+            statusMessage={statusMessage}
           />
         )}
 
@@ -274,10 +282,12 @@ function OnboardingView({
   whatsappDetected,
   isImporting,
   onImport,
+  statusMessage,
 }: {
   whatsappDetected: boolean | null;
   isImporting: boolean;
   onImport: () => void;
+  statusMessage: string;
 }) {
   return (
     <div className="flex-1 flex items-center justify-center p-8">
@@ -336,7 +346,7 @@ function OnboardingView({
           {isImporting ? (
             <>
               <Loader2 className="w-5 h-5 animate-spin" />
-              <span>Importing Messages...</span>
+              <span>{statusMessage || "Importing Messages..."}</span>
             </>
           ) : (
             <>

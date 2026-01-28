@@ -118,6 +118,7 @@ impl Anonymizer {
 pub struct FederationClient {
     config: FederationConfig,
     anonymizer: Anonymizer,
+    #[allow(dead_code)]
     api_endpoint: String,
 }
 
