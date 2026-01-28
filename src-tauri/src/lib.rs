@@ -334,6 +334,23 @@ pub fn run() {
     // SAL auto-disables WiFi on startup for maximum security
     disable_wifi();
     
+    // Log the important contractions SAL learned
+    let lattice = semantic_lattice::get_lattice_snapshot();
+    let top_people: Vec<String> = lattice.key_people.iter()
+        .take(10)
+        .map(|p| format!("{}({})", p.name, p.mentions))
+        .collect();
+    
+    if !top_people.is_empty() {
+        let contractions_msg = format!(
+            "{} important contractions: {}",
+            top_people.len(),
+            top_people.join(", ")
+        );
+        audit_log::log_event("CONTRACTIONS_LEARNED", &contractions_msg, "STARTUP");
+        println!("SAL: {}", contractions_msg);
+    }
+    
     let data_dir = dirs::data_local_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join("black-box");
