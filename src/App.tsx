@@ -38,6 +38,25 @@ interface VaultStats {
   last_indexed: string | null;
 }
 
+interface PersonInfo {
+  name: string;
+  mentions: number;
+  curvature: number;
+}
+
+interface RelationshipInfo {
+  person1: string;
+  person2: string;
+  strength: number;
+}
+
+interface LatticeSnapshot {
+  key_people: PersonInfo[];
+  relationships: RelationshipInfo[];
+  total_atoms: number;
+  total_edges: number;
+}
+
 function App() {
   const [networkStatus, setNetworkStatus] = useState<NetworkStatus>("checking");
   const [currentView, setCurrentView] = useState<AppView>("onboarding");
@@ -58,6 +77,7 @@ function App() {
   const [whatsappDetected, setWhatsappDetected] = useState<boolean | null>(null);
   const [statusMessage, setStatusMessage] = useState<string>("");
   const [suggestedQueries, setSuggestedQueries] = useState<string[]>([]);
+  const [lattice, setLattice] = useState<LatticeSnapshot | null>(null);
 
   useEffect(() => {
     checkNetworkStatus();
@@ -80,6 +100,7 @@ function App() {
     if (vaultStats.total_messages > 0) {
       setCurrentView("chat");
       loadSuggestedQueries();
+      loadLatticeSnapshot();
     }
   }, [vaultStats.total_messages]);
 
@@ -89,6 +110,15 @@ function App() {
       setSuggestedQueries(queries);
     } catch (e) {
       console.error("Failed to load suggestions:", e);
+    }
+  }
+
+  async function loadLatticeSnapshot() {
+    try {
+      const snapshot = await invoke<LatticeSnapshot>("get_lattice_snapshot");
+      setLattice(snapshot);
+    } catch (e) {
+      console.error("Failed to load lattice:", e);
     }
   }
 
@@ -272,6 +302,7 @@ function App() {
             networkStatus={networkStatus}
             vaultStats={vaultStats}
             suggestedQueries={suggestedQueries}
+            lattice={lattice}
           />
         )}
 
@@ -408,6 +439,7 @@ function ChatView({
   networkStatus,
   vaultStats,
   suggestedQueries,
+  lattice,
 }: {
   messages: Message[];
   inputValue: string;
@@ -417,11 +449,38 @@ function ChatView({
   networkStatus: NetworkStatus;
   vaultStats: VaultStats;
   suggestedQueries: string[];
+  lattice: LatticeSnapshot | null;
 }) {
   const isLocked = networkStatus === "online";
 
   return (
     <div className="flex-1 flex flex-col max-w-3xl mx-auto w-full p-6">
+      {/* Lattice - Key People */}
+      {lattice && lattice.key_people.length > 0 && (
+        <div className="mb-6 p-4 bg-gradient-to-r from-violet-500/10 to-purple-600/10 border border-violet-500/20 rounded-xl">
+          <h3 className="text-sm font-medium text-violet-400 mb-3">⠎ SAL knows these people in your life:</h3>
+          <div className="flex flex-wrap gap-2">
+            {lattice.key_people.slice(0, 10).map((person, i) => (
+              <span 
+                key={i}
+                className="px-3 py-1 bg-violet-500/20 text-violet-300 rounded-full text-sm"
+                title={`${person.mentions} mentions, κ=${person.curvature.toFixed(2)}`}
+              >
+                {person.name}
+                <span className="ml-1 text-violet-500 text-xs">({person.mentions})</span>
+              </span>
+            ))}
+          </div>
+          {lattice.relationships.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-violet-500/20">
+              <p className="text-xs text-zinc-500">
+                {lattice.total_atoms} meaning atoms • {lattice.total_edges} relationship edges
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Stats Bar */}
       <div className="flex items-center justify-between mb-6 pb-4 border-b border-zinc-800">
         <div className="flex items-center gap-6">

@@ -278,6 +278,61 @@ pub fn build_lattice_from_messages() -> SemanticLattice {
     lattice
 }
 
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct PersonInfo {
+    pub name: String,
+    pub mentions: usize,
+    pub curvature: f32,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct RelationshipInfo {
+    pub person1: String,
+    pub person2: String,
+    pub strength: f32,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct LatticeSnapshot {
+    pub key_people: Vec<PersonInfo>,
+    pub relationships: Vec<RelationshipInfo>,
+    pub total_atoms: usize,
+    pub total_edges: usize,
+}
+
+pub fn get_lattice_snapshot() -> LatticeSnapshot {
+    let lattice = build_lattice_from_messages();
+    
+    let mut sorted_atoms: Vec<_> = lattice.atoms.values().collect();
+    sorted_atoms.sort_by(|a, b| b.frequency.cmp(&a.frequency));
+    
+    let key_people: Vec<PersonInfo> = sorted_atoms.iter()
+        .take(15)
+        .map(|a| PersonInfo {
+            name: a.id.clone(),
+            mentions: a.frequency,
+            curvature: a.curvature,
+        })
+        .collect();
+    
+    let relationships: Vec<RelationshipInfo> = lattice.edges.iter()
+        .filter(|e| e.weight > 0.3)
+        .take(10)
+        .map(|e| RelationshipInfo {
+            person1: e.sources.first().cloned().unwrap_or_default(),
+            person2: e.target.clone(),
+            strength: e.weight,
+        })
+        .collect();
+    
+    LatticeSnapshot {
+        key_people,
+        relationships,
+        total_atoms: lattice.atoms.len(),
+        total_edges: lattice.edges.len(),
+    }
+}
+
 fn load_messages_for_lattice() -> Result<Vec<String>, String> {
     let home = dirs::home_dir()
         .ok_or_else(|| "Could not find home directory".to_string())?;

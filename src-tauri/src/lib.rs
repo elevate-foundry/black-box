@@ -238,6 +238,11 @@ fn get_suggested_queries(_state: State<AppState>) -> Result<Vec<String>, String>
 }
 
 #[tauri::command]
+fn get_lattice_snapshot() -> Result<semantic_lattice::LatticeSnapshot, String> {
+    Ok(semantic_lattice::get_lattice_snapshot())
+}
+
+#[tauri::command]
 fn check_whatsapp_available() -> Result<WhatsAppStatus, String> {
     let home = dirs::home_dir()
         .ok_or_else(|| "Could not find home directory".to_string())?;
@@ -303,6 +308,7 @@ pub fn run() {
             opt_out_federation,
             check_whatsapp_available,
             get_suggested_queries,
+            get_lattice_snapshot,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
