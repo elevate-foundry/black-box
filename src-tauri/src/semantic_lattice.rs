@@ -405,6 +405,48 @@ pub struct LatticeSnapshot {
     pub total_edges: usize,
 }
 
+/// Get the user's name from their most frequent individual contact
+/// This is likely their partner or closest person - the first meaning atom
+pub fn get_user_name() -> Option<String> {
+    if let Ok(contacts) = load_contacts_for_lattice() {
+        // Find the first non-group contact with high message count
+        // Skip group chats (they have commas or are clearly groups)
+        for contact in contacts.iter() {
+            if contact.is_group {
+                continue;
+            }
+            // Skip phone numbers (start with +)
+            if contact.name.starts_with('+') {
+                continue;
+            }
+            // Skip names that look like groups (contain commas)
+            if contact.name.contains(',') {
+                continue;
+            }
+            // This is likely a real person - return their name
+            // But we want the USER's name, not their contacts
+            // The user's own messages are marked differently
+        }
+        
+        // Actually, let's look for the user's name in group chat names
+        // Group chats often include the user's name: "Dan, Sarah, Ryan, Deedee"
+        for contact in contacts.iter() {
+            if contact.name.contains(',') {
+                // This is a group - extract names
+                let names: Vec<&str> = contact.name.split(',').map(|s| s.trim()).collect();
+                // The user's name is likely one of these
+                // Return the first short name (likely a first name)
+                for name in names {
+                    if name.len() >= 2 && name.len() <= 15 && !name.contains(' ') {
+                        return Some(name.to_string());
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 pub fn get_lattice_snapshot() -> LatticeSnapshot {
     let lattice = build_lattice_from_messages();
     
@@ -446,10 +488,10 @@ fn load_messages_for_lattice() -> Result<Vec<String>, String> {
 
 /// Contact with message count - the TRUE invariant shells
 #[derive(Debug)]
+#[allow(dead_code)]
 struct ContactStats {
     name: String,
     message_count: usize,
-    #[allow(dead_code)]
     is_group: bool,
 }
 
