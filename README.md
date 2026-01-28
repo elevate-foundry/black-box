@@ -6,6 +6,52 @@
 
 This app **only works in airplane mode**. This isn't a bug—it's the feature. When you disconnect from the internet, SAL unlocks, proving that your data can never leave your device.
 
+---
+
+## Quick Start (All Platforms)
+
+### One-Line Install
+
+**macOS / Linux:**
+```bash
+git clone https://github.com/elevate-foundry/black-box.git
+cd black-box
+./setup.sh
+cargo tauri dev
+```
+
+**Windows (PowerShell as Administrator):**
+```powershell
+git clone https://github.com/elevate-foundry/black-box.git
+cd black-box
+.\setup.ps1
+cargo tauri dev
+```
+
+The setup scripts automatically install all dependencies:
+- ✅ Rust toolchain
+- ✅ Node.js
+- ✅ Tauri CLI
+- ✅ Platform-specific build tools (WebKit, Visual Studio Build Tools, etc.)
+- ✅ Ollama (local LLM)
+
+---
+
+## Platform Support
+
+| Platform | Status | WhatsApp Import | Notes |
+|----------|--------|-----------------|-------|
+| **macOS** 10.15+ | ✅ Full | Direct DB access | Best experience |
+| **Linux** (Ubuntu/Debian/Fedora/Arch) | ✅ Full | File import | Use WhatsApp chat export |
+| **Windows** 10/11 | ✅ Full | File import | Use WhatsApp chat export |
+
+### WhatsApp Data Import
+
+- **macOS**: SAL reads directly from WhatsApp Desktop's local database
+- **Linux/Windows**: Export your chat from WhatsApp mobile (Chat → More → Export chat) and use "Import File"
+
+---
+
 ## How SAL Understands You
 
 ### The Semantic Compression Lattice
@@ -61,7 +107,7 @@ The lattice automatically discovers:
 
 ## Features
 
-- **WhatsApp Import**: Reads directly from WhatsApp Desktop's local SQLite database
+- **WhatsApp Import**: Reads directly from WhatsApp Desktop's local SQLite database (macOS) or file import (all platforms)
 - **Semantic Lattice**: Builds relationship graph from message patterns
 - **Braille Embeddings**: 32,000 messages/second geometric encoding
 - **Local RAG**: Retrieval Augmented Generation runs entirely on your device
@@ -79,30 +125,102 @@ The lattice automatically discovers:
 
 ## Requirements
 
-- macOS 10.15+
-- WhatsApp Desktop installed (for direct database access)
-- Ollama installed (`brew install ollama`)
+### All Platforms
 - ~2GB disk space for models
+- Ollama installed (setup script handles this)
 
-## Development
+### macOS
+- macOS 10.15+
+- WhatsApp Desktop installed (optional, for direct database access)
 
+### Linux
+- Ubuntu 22.04+, Debian 11+, Fedora 38+, or Arch Linux
+- WebKit2GTK 4.1 (setup script installs this)
+
+### Windows
+- Windows 10/11
+- WebView2 Runtime (setup script installs this)
+- Visual Studio Build Tools (setup script installs this)
+
+## Manual Installation
+
+If you prefer not to use the setup scripts:
+
+### macOS
 ```bash
-# Install dependencies
+# Install Rust
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+# Install Node.js
+brew install node
+
+# Install Tauri CLI
+cargo install tauri-cli
+
+# Install Ollama
+brew install ollama
+
+# Clone and run
+git clone https://github.com/elevate-foundry/black-box.git
+cd black-box
 npm install
+cargo tauri dev
+```
 
-# Run in development mode
-npm run tauri dev
+### Linux (Ubuntu/Debian)
+```bash
+# Install system dependencies
+sudo apt-get update
+sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget \
+    libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev \
+    libgtk-3-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev
 
-# Build for production
-npm run tauri build
+# Install Rust
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source ~/.cargo/env
+
+# Install Node.js
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+# Install Tauri CLI
+cargo install tauri-cli
+
+# Install Ollama
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Clone and run
+git clone https://github.com/elevate-foundry/black-box.git
+cd black-box
+npm install
+cargo tauri dev
+```
+
+### Windows
+```powershell
+# Install Rust from https://rustup.rs
+# Install Node.js from https://nodejs.org
+# Install Visual Studio Build Tools with C++ workload
+
+# Install Tauri CLI
+cargo install tauri-cli
+
+# Install Ollama from https://ollama.com
+
+# Clone and run
+git clone https://github.com/elevate-foundry/black-box.git
+cd black-box
+npm install
+cargo tauri dev
 ```
 
 ## Security Architecture
 
 1. **Network Kill Switch**: The app checks network connectivity and refuses to query the vault if online
-2. **No HTTP Allowlist**: Production builds have HTTP capabilities disabled at the Tauri config level
-3. **Local-Only Storage**: All data stored in `~/Library/Application Support/black-box/`
-4. **No Telemetry**: Zero analytics, zero crash reporting, zero phone-home
+2. **Auto WiFi Disable**: SAL automatically disables WiFi on startup (cross-platform)
+3. **No HTTP Allowlist**: Production builds have HTTP capabilities disabled at the Tauri config level
+4. **Local-Only Storage**: All data stored in platform-appropriate app data directory
+5. **No Telemetry**: Zero analytics, zero crash reporting, zero phone-home
 
 ## The Mathematics
 

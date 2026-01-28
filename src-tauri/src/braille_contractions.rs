@@ -193,16 +193,71 @@ pub struct ContractedCorpus {
     pub elapsed_ms: usize,
 }
 
+/// Get the WhatsApp database path for the current platform
+fn get_whatsapp_db_path() -> Option<std::path::PathBuf> {
+    let home = dirs::home_dir()?;
+    
+    #[cfg(target_os = "macos")]
+    {
+        let path = home
+            .join("Library")
+            .join("Group Containers")
+            .join("group.net.whatsapp.WhatsApp.shared")
+            .join("ChatStorage.sqlite");
+        if path.exists() {
+            return Some(path);
+        }
+    }
+    
+    #[cfg(target_os = "linux")]
+    {
+        let possible_paths = [
+            home.join(".config/WhatsApp/IndexedDB"),
+            home.join(".config/whatsapp-for-linux"),
+        ];
+        for path in &possible_paths {
+            if path.exists() {
+                return Some(path.clone());
+            }
+        }
+    }
+    
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(app_data) = dirs::data_local_dir() {
+            let path = app_data
+                .join("Packages")
+                .join("5319275A.WhatsAppDesktop_cv1g1gvanyjgm")
+                .join("LocalCache")
+                .join("Roaming")
+                .join("WhatsApp")
+                .join("Database")
+                .join("msgstore.db");
+            if path.exists() {
+                return Some(path);
+            }
+        }
+    }
+    
+    None
+}
+
+/// Get the output path for Braille contractions file (cross-platform)
+fn get_output_path() -> std::path::PathBuf {
+    // Try Desktop first, fall back to home directory
+    if let Some(desktop) = dirs::desktop_dir() {
+        return desktop.join("sal_braille_contractions.txt");
+    }
+    if let Some(home) = dirs::home_dir() {
+        return home.join("sal_braille_contractions.txt");
+    }
+    std::path::PathBuf::from("sal_braille_contractions.txt")
+}
+
 /// Generate Braille contractions from WhatsApp messages
 pub fn generate_braille_contractions() -> Result<ContractedCorpus, String> {
-    let home = dirs::home_dir()
-        .ok_or_else(|| "Could not find home directory".to_string())?;
-    
-    let db_path = home
-        .join("Library")
-        .join("Group Containers")
-        .join("group.net.whatsapp.WhatsApp.shared")
-        .join("ChatStorage.sqlite");
+    let db_path = get_whatsapp_db_path()
+        .ok_or_else(|| "WhatsApp database not found. Use 'Import File' to import a chat export.".to_string())?;
     
     if !db_path.exists() {
         return Err("WhatsApp database not found".to_string());
@@ -223,8 +278,8 @@ pub fn generate_braille_contractions() -> Result<ContractedCorpus, String> {
     let mut contractor = BrailleContractor::new();
     let corpus = contractor.contract_corpus(&messages);
     
-    // Save to file
-    let output_path = home.join("Desktop").join("sal_braille_contractions.txt");
+    // Save to file (cross-platform path)
+    let output_path = get_output_path();
     contractor.save_to_file(&corpus, output_path.to_str().unwrap())?;
     
     println!("SAL: Generated {} Braille contractions at {} tokens/sec", 

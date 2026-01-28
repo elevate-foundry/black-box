@@ -23,15 +23,43 @@ fn truncate_safe(s: &str, max_chars: usize) -> String {
 }
 
 fn disable_wifi() {
-    // On macOS, use networksetup to disable WiFi
-    // This requires the app to have appropriate permissions
-    if cfg!(target_os = "macos") {
+    // Cross-platform WiFi disable for maximum security
+    // This requires the app to have appropriate permissions on each platform
+    
+    #[cfg(target_os = "macos")]
+    {
         let _ = std::process::Command::new("networksetup")
             .args(["-setairportpower", "en0", "off"])
             .output();
-        // Give the network stack time to fully disconnect
         std::thread::sleep(std::time::Duration::from_millis(500));
-        println!("SAL: WiFi disabled for your protection");
+        println!("SAL: WiFi disabled for your protection (macOS)");
+    }
+    
+    #[cfg(target_os = "linux")]
+    {
+        // Try nmcli first (NetworkManager), then rfkill as fallback
+        let nmcli_result = std::process::Command::new("nmcli")
+            .args(["radio", "wifi", "off"])
+            .output();
+        
+        if nmcli_result.is_err() {
+            // Fallback to rfkill (requires sudo or appropriate permissions)
+            let _ = std::process::Command::new("rfkill")
+                .args(["block", "wifi"])
+                .output();
+        }
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        println!("SAL: WiFi disabled for your protection (Linux)");
+    }
+    
+    #[cfg(target_os = "windows")]
+    {
+        // Use netsh to disable WiFi interface
+        let _ = std::process::Command::new("netsh")
+            .args(["interface", "set", "interface", "Wi-Fi", "disable"])
+            .output();
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        println!("SAL: WiFi disabled for your protection (Windows)");
     }
 }
 
@@ -299,35 +327,17 @@ fn generate_braille_file() -> Result<String, String> {
 
 #[tauri::command]
 fn check_whatsapp_available() -> Result<WhatsAppStatus, String> {
-    let home = dirs::home_dir()
-        .ok_or_else(|| "Could not find home directory".to_string())?;
-    
-    let db_path = home
-        .join("Library")
-        .join("Group Containers")
-        .join("group.net.whatsapp.WhatsApp.shared")
-        .join("ChatStorage.sqlite");
-    
-    if !db_path.exists() {
-        return Ok(WhatsAppStatus {
+    // Use the cross-platform WhatsApp import check
+    match ingestors::whatsapp::import_from_local_db() {
+        Ok(messages) => Ok(WhatsAppStatus {
+            available: true,
+            message_count: messages.len(),
+        }),
+        Err(_) => Ok(WhatsAppStatus {
             available: false,
             message_count: 0,
-        });
+        }),
     }
-    
-    let conn = rusqlite::Connection::open(&db_path)
-        .map_err(|e| format!("Failed to open WhatsApp database: {}", e))?;
-    
-    let count: usize = conn.query_row(
-        "SELECT COUNT(*) FROM ZWAMESSAGE WHERE ZTEXT IS NOT NULL AND ZTEXT != ''",
-        [],
-        |row| row.get(0)
-    ).unwrap_or(0);
-    
-    Ok(WhatsAppStatus {
-        available: true,
-        message_count: count,
-    })
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

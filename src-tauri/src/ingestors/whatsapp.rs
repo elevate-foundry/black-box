@@ -52,18 +52,84 @@ pub fn import() -> Result<Vec<String>, String> {
     Ok(all_messages)
 }
 
-pub fn import_from_local_db() -> Result<Vec<String>, String> {
-    let home = dirs::home_dir()
-        .ok_or_else(|| "Could not find home directory".to_string())?;
+/// Get the WhatsApp database path for the current platform
+fn get_whatsapp_db_path() -> Option<std::path::PathBuf> {
+    let home = dirs::home_dir()?;
     
-    let db_path = home
-        .join("Library")
-        .join("Group Containers")
-        .join("group.net.whatsapp.WhatsApp.shared")
-        .join("ChatStorage.sqlite");
+    #[cfg(target_os = "macos")]
+    {
+        let path = home
+            .join("Library")
+            .join("Group Containers")
+            .join("group.net.whatsapp.WhatsApp.shared")
+            .join("ChatStorage.sqlite");
+        if path.exists() {
+            return Some(path);
+        }
+    }
+    
+    #[cfg(target_os = "linux")]
+    {
+        // WhatsApp Web stores data in various locations on Linux
+        // Check common Electron app data locations
+        let possible_paths = [
+            home.join(".config/WhatsApp/IndexedDB"),
+            home.join(".config/whatsapp-for-linux"),
+            home.join("snap/whatsapp-for-linux/current/.config/whatsapp-for-linux"),
+        ];
+        for path in &possible_paths {
+            if path.exists() {
+                return Some(path.clone());
+            }
+        }
+    }
+    
+    #[cfg(target_os = "windows")]
+    {
+        // WhatsApp Desktop on Windows stores data in AppData
+        if let Some(app_data) = dirs::data_local_dir() {
+            let path = app_data
+                .join("Packages")
+                .join("5319275A.WhatsAppDesktop_cv1g1gvanyjgm")
+                .join("LocalCache")
+                .join("Roaming")
+                .join("WhatsApp")
+                .join("Database")
+                .join("msgstore.db");
+            if path.exists() {
+                return Some(path);
+            }
+            // Alternative: non-Store version
+            let alt_path = app_data
+                .join("WhatsApp")
+                .join("Database")
+                .join("msgstore.db");
+            if alt_path.exists() {
+                return Some(alt_path);
+            }
+        }
+    }
+    
+    None
+}
+
+pub fn import_from_local_db() -> Result<Vec<String>, String> {
+    let db_path = get_whatsapp_db_path()
+        .ok_or_else(|| {
+            let platform_hint = if cfg!(target_os = "macos") {
+                "Make sure WhatsApp Desktop is installed from the App Store."
+            } else if cfg!(target_os = "linux") {
+                "On Linux, use 'Import File' to import a WhatsApp chat export (.txt file)."
+            } else if cfg!(target_os = "windows") {
+                "Make sure WhatsApp Desktop is installed from the Microsoft Store."
+            } else {
+                "WhatsApp Desktop database not found."
+            };
+            format!("WhatsApp Desktop database not found. {}", platform_hint)
+        })?;
     
     if !db_path.exists() {
-        return Err("WhatsApp Desktop database not found. Is WhatsApp Desktop installed?".to_string());
+        return Err("WhatsApp Desktop database not found. Use 'Import File' to import a chat export.".to_string());
     }
     
     let conn = Connection::open(&db_path)
@@ -107,14 +173,10 @@ pub fn import_from_local_db() -> Result<Vec<String>, String> {
 }
 
 pub fn get_contact_names() -> Result<Vec<String>, String> {
-    let home = dirs::home_dir()
-        .ok_or_else(|| "Could not find home directory".to_string())?;
-    
-    let db_path = home
-        .join("Library")
-        .join("Group Containers")
-        .join("group.net.whatsapp.WhatsApp.shared")
-        .join("ChatStorage.sqlite");
+    let db_path = match get_whatsapp_db_path() {
+        Some(path) => path,
+        None => return Ok(vec![]),
+    };
     
     if !db_path.exists() {
         return Ok(vec![]);
@@ -156,14 +218,10 @@ pub fn get_contact_names() -> Result<Vec<String>, String> {
 }
 
 pub fn get_recent_topics() -> Result<Vec<String>, String> {
-    let home = dirs::home_dir()
-        .ok_or_else(|| "Could not find home directory".to_string())?;
-    
-    let db_path = home
-        .join("Library")
-        .join("Group Containers")
-        .join("group.net.whatsapp.WhatsApp.shared")
-        .join("ChatStorage.sqlite");
+    let db_path = match get_whatsapp_db_path() {
+        Some(path) => path,
+        None => return Ok(vec![]),
+    };
     
     if !db_path.exists() {
         return Ok(vec![]);
