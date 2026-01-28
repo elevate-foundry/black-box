@@ -219,7 +219,7 @@ pub struct AuditSummary {
     pub chain_valid: bool,
 }
 
-/// Global audit log instance
+// Global audit log instance
 lazy_static::lazy_static! {
     pub static ref AUDIT: std::sync::Mutex<Option<AuditLog>> = std::sync::Mutex::new(None);
 }
