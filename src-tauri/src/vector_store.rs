@@ -103,6 +103,17 @@ impl VectorStore {
             )
             .ok()
     }
+    
+    pub fn get_sample_messages(&self, limit: usize) -> Vec<String> {
+        let mut stmt = self.conn
+            .prepare("SELECT content FROM messages ORDER BY RANDOM() LIMIT ?1")
+            .unwrap();
+        
+        stmt.query_map([limit], |row| row.get(0))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect()
+    }
 }
 
 fn embedding_to_bytes(embedding: &[f32]) -> Vec<u8> {

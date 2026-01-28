@@ -199,6 +199,65 @@ pub struct WhatsAppStatus {
 }
 
 #[tauri::command]
+fn get_suggested_queries(state: State<AppState>) -> Result<Vec<String>, String> {
+    let store = state.vector_store.lock().map_err(|e| e.to_string())?;
+    
+    if store.count() == 0 {
+        return Ok(vec![]);
+    }
+    
+    let samples = store.get_sample_messages(50);
+    
+    let mut names: Vec<String> = Vec::new();
+    let mut topics: Vec<String> = Vec::new();
+    
+    for msg in &samples {
+        for word in msg.split_whitespace() {
+            let clean = word.trim_matches(|c: char| !c.is_alphanumeric());
+            if clean.len() >= 3 && clean.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                if !["The", "This", "That", "What", "When", "Where", "How", "Why", "I'm", "You", "We", "They"].contains(&clean) {
+                    if !names.contains(&clean.to_string()) && names.len() < 10 {
+                        names.push(clean.to_string());
+                    }
+                }
+            }
+        }
+        
+        let lower = msg.to_lowercase();
+        let topic_keywords = ["dinner", "lunch", "meeting", "call", "trip", "vacation", "birthday", 
+                              "wedding", "party", "job", "work", "project", "money", "payment",
+                              "doctor", "appointment", "flight", "hotel", "car", "house", "move"];
+        for keyword in topic_keywords {
+            if lower.contains(keyword) && !topics.contains(&keyword.to_string()) {
+                topics.push(keyword.to_string());
+            }
+        }
+    }
+    
+    let mut suggestions = Vec::new();
+    
+    if let Some(name) = names.first() {
+        suggestions.push(format!("What did {} say about work?", name));
+    }
+    if let Some(topic) = topics.first() {
+        suggestions.push(format!("Find messages about {}", topic));
+    }
+    if names.len() > 1 {
+        suggestions.push(format!("When did I last talk to {}?", names[1]));
+    }
+    
+    if suggestions.is_empty() {
+        suggestions = vec![
+            "What did we talk about last week?".to_string(),
+            "Find messages about plans".to_string(),
+            "Who messaged me recently?".to_string(),
+        ];
+    }
+    
+    Ok(suggestions)
+}
+
+#[tauri::command]
 fn check_whatsapp_available() -> Result<WhatsAppStatus, String> {
     let home = dirs::home_dir()
         .ok_or_else(|| "Could not find home directory".to_string())?;
@@ -263,6 +322,7 @@ pub fn run() {
             opt_in_federation,
             opt_out_federation,
             check_whatsapp_available,
+            get_suggested_queries,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

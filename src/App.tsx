@@ -59,6 +59,7 @@ function App() {
   });
   const [whatsappDetected, setWhatsappDetected] = useState<boolean | null>(null);
   const [statusMessage, setStatusMessage] = useState<string>("");
+  const [suggestedQueries, setSuggestedQueries] = useState<string[]>([]);
 
   useEffect(() => {
     checkNetworkStatus();
@@ -80,8 +81,18 @@ function App() {
   useEffect(() => {
     if (vaultStats.total_messages > 0) {
       setCurrentView("chat");
+      loadSuggestedQueries();
     }
   }, [vaultStats.total_messages]);
+
+  async function loadSuggestedQueries() {
+    try {
+      const queries = await invoke<string[]>("get_suggested_queries");
+      setSuggestedQueries(queries);
+    } catch (e) {
+      console.error("Failed to load suggestions:", e);
+    }
+  }
 
   async function checkNetworkStatus() {
     try {
@@ -261,6 +272,7 @@ function App() {
             isProcessing={isProcessing}
             networkStatus={networkStatus}
             vaultStats={vaultStats}
+            suggestedQueries={suggestedQueries}
           />
         )}
 
@@ -396,6 +408,7 @@ function ChatView({
   isProcessing,
   networkStatus,
   vaultStats,
+  suggestedQueries,
 }: {
   messages: Message[];
   inputValue: string;
@@ -404,6 +417,7 @@ function ChatView({
   isProcessing: boolean;
   networkStatus: NetworkStatus;
   vaultStats: VaultStats;
+  suggestedQueries: string[];
 }) {
   const isLocked = networkStatus === "online";
 
@@ -438,24 +452,15 @@ function ChatView({
                 Ask anything about your WhatsApp conversations
               </p>
               <div className="space-y-2 text-left">
-                <button 
-                  onClick={() => setInputValue("What did I talk about with Mom last week?")}
-                  className="w-full p-3 text-left text-sm bg-zinc-900 hover:bg-zinc-800 rounded-lg border border-zinc-800 transition-colors"
-                >
-                  "What did I talk about with Mom last week?"
-                </button>
-                <button 
-                  onClick={() => setInputValue("Find messages about dinner plans")}
-                  className="w-full p-3 text-left text-sm bg-zinc-900 hover:bg-zinc-800 rounded-lg border border-zinc-800 transition-colors"
-                >
-                  "Find messages about dinner plans"
-                </button>
-                <button 
-                  onClick={() => setInputValue("When did I promise to call John?")}
-                  className="w-full p-3 text-left text-sm bg-zinc-900 hover:bg-zinc-800 rounded-lg border border-zinc-800 transition-colors"
-                >
-                  "When did I promise to call John?"
-                </button>
+                {suggestedQueries.map((query, i) => (
+                  <button 
+                    key={i}
+                    onClick={() => setInputValue(query)}
+                    className="w-full p-3 text-left text-sm bg-zinc-900 hover:bg-zinc-800 rounded-lg border border-zinc-800 transition-colors"
+                  >
+                    "{query}"
+                  </button>
+                ))}
               </div>
             </div>
           </div>
