@@ -30,6 +30,8 @@ dirs = "5"
 walkdir = "2"
 thiserror = "2"
 lazy_static = "1.4"
+qrcode = "0.14"
+base64 = "0.21"
 
 [features]
 default = ["custom-protocol"]

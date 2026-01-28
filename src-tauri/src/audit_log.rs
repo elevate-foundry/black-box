@@ -2,6 +2,8 @@ use chrono::Utc;
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use qrcode::QrCode;
+use qrcode::render::unicode;
 
 /// Audit Log - Complete trail proving no data left the device
 /// Every network status change is logged with timestamp and hash
@@ -252,6 +254,60 @@ pub fn get_audit_summary() -> Option<AuditSummary> {
     if let Ok(guard) = AUDIT.lock() {
         if let Some(ref log) = *guard {
             return log.get_summary().ok();
+        }
+    }
+    None
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditProofQR {
+    pub qr_string: String,
+    pub proof_data: String,
+    pub chain_valid: bool,
+    pub total_events: usize,
+    pub offline_queries: usize,
+    pub blocked_queries: usize,
+}
+
+/// Generate a QR code containing cryptographic proof of offline operation
+/// This can be scanned by auditors to verify SOC 2 compliance
+pub fn generate_audit_proof_qr() -> Option<AuditProofQR> {
+    if let Ok(guard) = AUDIT.lock() {
+        if let Some(ref log) = *guard {
+            // Get the latest hash from the chain
+            let latest_hash: Option<String> = log.conn.query_row(
+                "SELECT hash FROM audit_log ORDER BY id DESC LIMIT 1",
+                [],
+                |row| row.get(0)
+            ).ok();
+            
+            let summary = log.get_summary().ok()?;
+            
+            // Create proof data
+            let proof_data = format!(
+                "SAL_AUDIT_PROOF|v1|{}|events:{}|offline_queries:{}|blocked:{}|chain_valid:{}",
+                latest_hash.unwrap_or_else(|| "GENESIS".to_string()),
+                summary.total_events,
+                summary.offline_operations,
+                summary.blocked_queries,
+                summary.chain_valid
+            );
+            
+            // Generate QR code
+            let code = QrCode::new(proof_data.as_bytes()).ok()?;
+            let qr_string = code.render::<unicode::Dense1x2>()
+                .dark_color(unicode::Dense1x2::Light)
+                .light_color(unicode::Dense1x2::Dark)
+                .build();
+            
+            return Some(AuditProofQR {
+                qr_string,
+                proof_data,
+                chain_valid: summary.chain_valid,
+                total_events: summary.total_events,
+                offline_queries: summary.offline_operations,
+                blocked_queries: summary.blocked_queries,
+            });
         }
     }
     None

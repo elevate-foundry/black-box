@@ -281,6 +281,11 @@ fn get_audit_summary() -> Option<audit_log::AuditSummary> {
 }
 
 #[tauri::command]
+fn get_audit_proof_qr() -> Option<audit_log::AuditProofQR> {
+    audit_log::generate_audit_proof_qr()
+}
+
+#[tauri::command]
 fn generate_braille_file() -> Result<String, String> {
     let corpus = braille_contractions::generate_braille_contractions()?;
     Ok(format!(
@@ -386,6 +391,7 @@ pub fn run() {
             generate_braille_file,
             get_audit_log,
             get_audit_summary,
+            get_audit_proof_qr,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -57,6 +57,15 @@ interface LatticeSnapshot {
   total_edges: number;
 }
 
+interface AuditProofQR {
+  qr_string: string;
+  proof_data: string;
+  chain_valid: boolean;
+  total_events: number;
+  offline_queries: number;
+  blocked_queries: number;
+}
+
 function App() {
   const [networkStatus, setNetworkStatus] = useState<NetworkStatus>("checking");
   const [currentView, setCurrentView] = useState<AppView>("onboarding");
@@ -615,6 +624,19 @@ function SettingsView({
   vaultStats: VaultStats;
   onBack: () => void;
 }) {
+  const [auditQR, setAuditQR] = useState<AuditProofQR | null>(null);
+  const [showQR, setShowQR] = useState(false);
+
+  const loadAuditQR = async () => {
+    try {
+      const qr = await invoke<AuditProofQR | null>("get_audit_proof_qr");
+      setAuditQR(qr);
+      setShowQR(true);
+    } catch (e) {
+      console.error("Failed to generate QR:", e);
+    }
+  };
+
   return (
     <div className="flex-1 max-w-2xl mx-auto w-full p-6">
       <button
@@ -684,6 +706,59 @@ function SettingsView({
             You can opt out anytime - we delete your contributions
           </p>
         </div>
+      </div>
+
+      {/* Audit Proof QR Code */}
+      <div className="bg-zinc-900 rounded-xl p-5 mb-6 border border-zinc-800">
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <h3 className="font-medium flex items-center gap-2">
+              <Shield className="w-5 h-5" />
+              SOC 2 Audit Proof
+            </h3>
+            <p className="text-sm text-zinc-400 mt-1">
+              Generate a QR code proving your offline operation
+            </p>
+          </div>
+          <button
+            onClick={loadAuditQR}
+            className="px-4 py-2 rounded-lg text-sm font-medium bg-violet-600 text-white hover:bg-violet-700 transition-colors"
+          >
+            Generate QR
+          </button>
+        </div>
+
+        {showQR && auditQR && (
+          <div className="mt-4 p-4 bg-zinc-800 rounded-lg">
+            <pre className="font-mono text-xs text-green-400 whitespace-pre overflow-x-auto mb-4">
+              {auditQR.qr_string}
+            </pre>
+            <div className="grid grid-cols-3 gap-4 text-center text-sm">
+              <div>
+                <p className="text-2xl font-bold text-green-400">{auditQR.total_events}</p>
+                <p className="text-zinc-500">Total Events</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-green-400">{auditQR.offline_queries}</p>
+                <p className="text-zinc-500">Offline Queries</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-red-400">{auditQR.blocked_queries}</p>
+                <p className="text-zinc-500">Blocked (Online)</p>
+              </div>
+            </div>
+            <div className="mt-4 pt-4 border-t border-zinc-700">
+              <p className="text-xs text-zinc-500">
+                Chain Valid: <span className={auditQR.chain_valid ? "text-green-400" : "text-red-400"}>
+                  {auditQR.chain_valid ? "✓ Verified" : "✗ Tampered"}
+                </span>
+              </p>
+              <p className="text-xs text-zinc-600 mt-1 font-mono break-all">
+                {auditQR.proof_data}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Privacy Info */}

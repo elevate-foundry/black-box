@@ -241,10 +241,12 @@ dependencies = [
 name = "black-box"
 version = "0.1.0"
 dependencies = [
+ "base64 0.21.7",
  "chrono",
  "dirs 5.0.1",
  "fastembed",
  "lazy_static",
+ "qrcode",
  "rand 0.8.5",
  "rayon",
  "regex",
@@ -3491,6 +3493,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f6d64c71eb498fe9eae14ce4ec935c555749aef511cca85b5568910d6e48001"
 dependencies = [
  "bytemuck",
+]
+
+[[package]]
+name = "qrcode"
+version = "0.14.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d68782463e408eb1e668cf6152704bd856c78c5b6417adaee3203d8f4c1fc9ec"
+dependencies = [
+ "image",
 ]
 
 [[package]]
