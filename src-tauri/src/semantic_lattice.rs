@@ -67,6 +67,21 @@ pub struct SemanticLattice {
     shells: Vec<InvariantShell>,
 }
 
+#[derive(Default)]
+struct EntityContext {
+    message_count: usize,
+    mention_count: usize,
+    family_score: usize,
+    partner_score: usize,
+    is_sender: bool,
+}
+
+impl EntityContext {
+    fn new() -> Self {
+        Self::default()
+    }
+}
+
 impl SemanticLattice {
     pub fn new() -> Self {
         Self {
@@ -138,71 +153,118 @@ impl SemanticLattice {
 
     /// Learn relationships from co-occurrence patterns
     pub fn learn_from_messages(&mut self, messages: &[String]) {
-        let mut cooccurrence: HashMap<(String, String), usize> = HashMap::new();
-        let mut entity_freq: HashMap<String, usize> = HashMap::new();
+        // Blocklist: common words that aren't people
+        let blocklist = [
+            // Games/Apps
+            "Wordle", "Puzzle", "Connections", "Game", "App", "Link", "Click",
+            // Common sentence starters
+            "The", "This", "That", "What", "When", "Where", "Why", "How", "Who",
+            "I", "We", "You", "It", "They", "He", "She", "My", "Your", "Our",
+            "I'm", "I'll", "I've", "We're", "You're", "It's", "That's", "What's",
+            // Common words that get capitalized
+            "Yeah", "Yes", "No", "Okay", "Ok", "Thanks", "Thank", "Please", "Sorry",
+            "And", "But", "So", "If", "Or", "Just", "Like", "Really", "Very",
+            "Good", "Great", "Nice", "Love", "Happy", "Today", "Tomorrow", "Yesterday",
+            "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
+            "January", "February", "March", "April", "May", "June", "July", 
+            "August", "September", "October", "November", "December",
+            "Hey", "Hi", "Hello", "Bye", "Lol", "Haha", "Omg", "Wow",
+            // URLs and tech
+            "Http", "Https", "Www", "Com", "Org", "Net",
+        ];
         
-        // Common relationship indicators
-        let family_words = ["mom", "dad", "mother", "father", "brother", "sister", "family"];
-        let partner_words = ["love", "babe", "honey", "wife", "husband", "partner"];
+        // Relationship context words
+        let family_context = ["mom", "dad", "mother", "father", "brother", "sister", 
+                              "family", "parent", "son", "daughter", "grandma", "grandpa"];
+        let partner_context = ["love you", "babe", "honey", "wife", "husband", "partner",
+                               "miss you", "love ya", "❤", "😘", "💕"];
+        
+        let mut entity_contexts: HashMap<String, EntityContext> = HashMap::new();
         
         for msg in messages {
+            // Extract sender from message format: [timestamp] Sender: message
+            let sender = self.extract_sender(msg);
+            
+            // Find potential names (capitalized words not in blocklist)
             let words: Vec<&str> = msg.split_whitespace().collect();
-            let capitalized: Vec<String> = words.iter()
+            let potential_names: Vec<String> = words.iter()
                 .filter(|w| w.chars().next().map(|c| c.is_uppercase()).unwrap_or(false))
-                .filter(|w| w.len() >= 2 && w.len() <= 20)
-                .filter(|w| !["The", "This", "That", "What", "When", "I", "We", "You", "It"].contains(w))
+                .filter(|w| w.len() >= 2 && w.len() <= 15)
                 .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()).to_string())
-                .filter(|w| !w.is_empty())
+                .filter(|w| !w.is_empty() && w.len() >= 2)
+                .filter(|w| !blocklist.iter().any(|b| b.eq_ignore_ascii_case(w)))
+                .filter(|w| !w.chars().all(|c| c.is_numeric()))
                 .collect();
             
-            // Count entity frequencies
-            for entity in &capitalized {
-                *entity_freq.entry(entity.clone()).or_insert(0) += 1;
-            }
-            
-            // Count co-occurrences
-            for i in 0..capitalized.len() {
-                for j in (i+1)..capitalized.len() {
-                    let pair = if capitalized[i] < capitalized[j] {
-                        (capitalized[i].clone(), capitalized[j].clone())
-                    } else {
-                        (capitalized[j].clone(), capitalized[i].clone())
-                    };
-                    *cooccurrence.entry(pair).or_insert(0) += 1;
-                }
-            }
-            
-            // Detect relationship types from context
             let lower = msg.to_lowercase();
-            for entity in &capitalized {
-                if family_words.iter().any(|w| lower.contains(w)) {
-                    let _ = self.atoms.get_mut(entity);
-                    // Mark as potential family
+            let is_family_context = family_context.iter().any(|w| lower.contains(w));
+            let is_partner_context = partner_context.iter().any(|w| lower.contains(w));
+            
+            // Add sender as entity if valid
+            if let Some(ref s) = sender {
+                if !blocklist.iter().any(|b| b.eq_ignore_ascii_case(s)) && s.len() >= 2 {
+                    let ctx = entity_contexts.entry(s.clone()).or_insert(EntityContext::new());
+                    ctx.message_count += 1;
+                    ctx.is_sender = true;
+                    if is_family_context { ctx.family_score += 1; }
+                    if is_partner_context { ctx.partner_score += 1; }
                 }
-                if partner_words.iter().any(|w| lower.contains(w)) {
-                    // Mark as potential partner
-                }
+            }
+            
+            // Add mentioned names
+            for name in &potential_names {
+                let ctx = entity_contexts.entry(name.clone()).or_insert(EntityContext::new());
+                ctx.mention_count += 1;
+                if is_family_context { ctx.family_score += 1; }
+                if is_partner_context { ctx.partner_score += 1; }
             }
         }
         
-        // Add atoms for frequent entities
-        for (entity, freq) in &entity_freq {
-            if *freq >= 3 {
-                let embedding = self.generate_embedding(entity);
-                self.add_atom(entity, embedding, *freq);
+        // Calculate invariant score: entities that appear consistently as senders
+        // or are mentioned in relationship contexts are true invariants
+        for (name, ctx) in &entity_contexts {
+            let invariant_score = 
+                (ctx.message_count as f32 * 2.0) +  // Senders are strong signals
+                (ctx.mention_count as f32 * 0.5) +  // Mentions are weaker
+                (ctx.family_score as f32 * 5.0) +   // Family context is very strong
+                (ctx.partner_score as f32 * 10.0);  // Partner context is strongest
+            
+            if invariant_score >= 10.0 {
+                let embedding = self.generate_embedding(name);
+                let total_freq = ctx.message_count + ctx.mention_count;
+                self.add_atom(name, embedding, total_freq);
+                
+                // Determine relationship type
+                let rel_type = if ctx.partner_score > 5 {
+                    RelationType::Partner
+                } else if ctx.family_score > 3 {
+                    RelationType::Family
+                } else if ctx.message_count > 50 {
+                    RelationType::Friend
+                } else {
+                    RelationType::Acquaintance
+                };
+                
+                // Store relationship type in atom (via edge to self for now)
+                if rel_type != RelationType::Acquaintance {
+                    self.add_edge(vec![name.clone()], name.clone(), rel_type);
+                }
             }
         }
-        
-        // Add edges for strong co-occurrences
-        for ((e1, e2), count) in &cooccurrence {
-            if *count >= 2 {
-                self.add_edge(
-                    vec![e1.clone()],
-                    e2.clone(),
-                    RelationType::Unknown
-                );
+    }
+    
+    fn extract_sender(&self, msg: &str) -> Option<String> {
+        // Format: [timestamp] Sender: message
+        if let Some(bracket_end) = msg.find(']') {
+            let after_bracket = &msg[bracket_end + 1..];
+            if let Some(colon_pos) = after_bracket.find(':') {
+                let sender = after_bracket[..colon_pos].trim();
+                if !sender.is_empty() && sender != "Me" {
+                    return Some(sender.to_string());
+                }
             }
         }
+        None
     }
 
     fn generate_embedding(&self, text: &str) -> Vec<f32> {

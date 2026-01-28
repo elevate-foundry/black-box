@@ -20,6 +20,17 @@ fn truncate_safe(s: &str, max_chars: usize) -> String {
     }
 }
 
+fn disable_wifi() {
+    // On macOS, use networksetup to disable WiFi
+    // This requires the app to have appropriate permissions
+    if cfg!(target_os = "macos") {
+        let _ = std::process::Command::new("networksetup")
+            .args(["-setairportpower", "en0", "off"])
+            .output();
+        println!("SAL: WiFi disabled for your protection");
+    }
+}
+
 pub struct AppState {
     pub vector_store: Mutex<vector_store::VectorStore>,
     pub embedder: Mutex<Option<embeddings::Embedder>>,
@@ -277,6 +288,9 @@ fn check_whatsapp_available() -> Result<WhatsAppStatus, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // SAL auto-disables WiFi on startup for maximum security
+    disable_wifi();
+    
     let data_dir = dirs::data_local_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join("black-box");
