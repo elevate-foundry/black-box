@@ -5,8 +5,6 @@ import {
   Shield, 
   Wifi, 
   WifiOff, 
-  MessageSquare, 
-  Search,
   Lock,
   Loader2,
   Send,
@@ -208,10 +206,11 @@ function App() {
       {/* Minimal Header */}
       <header className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center">
-            <MessageSquare className="w-4 h-4 text-white" />
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center font-bold text-white text-sm">
+            ⠎
           </div>
-          <span className="font-semibold">WhatsApp Vault</span>
+          <span className="font-semibold">SAL</span>
+          <span className="text-xs text-zinc-500">Braille-Native AI</span>
         </div>
         
         <div className="flex items-center gap-4">
@@ -306,13 +305,13 @@ function OnboardingView({
       <div className="max-w-md w-full">
         {/* Hero */}
         <div className="text-center mb-12">
-          <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center mx-auto mb-6 shadow-lg shadow-green-500/20">
-            <MessageSquare className="w-10 h-10 text-white" />
+          <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center mx-auto mb-6 shadow-lg shadow-violet-500/20 text-4xl">
+            ⠎
           </div>
-          <h1 className="text-3xl font-bold mb-3">Your WhatsApp, Your AI</h1>
+          <h1 className="text-3xl font-bold mb-3">Meet SAL</h1>
           <p className="text-zinc-400">
-            Search your entire WhatsApp history with AI. 
-            <span className="text-green-400"> 100% offline. 100% private.</span>
+            The first AI to speak natively in Braille. 
+            <span className="text-violet-400"> Born from your messages.</span>
           </p>
         </div>
 
@@ -444,12 +443,12 @@ function ChatView({
         {messages.length === 0 && (
           <div className="h-full flex items-center justify-center">
             <div className="text-center max-w-sm">
-              <div className="w-16 h-16 rounded-2xl bg-zinc-800 flex items-center justify-center mx-auto mb-4">
-                <Search className="w-8 h-8 text-zinc-600" />
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500/20 to-purple-600/20 flex items-center justify-center mx-auto mb-4 text-3xl">
+                ⠎
               </div>
-              <h3 className="text-lg font-medium mb-2">Search Your Memory</h3>
+              <h3 className="text-lg font-medium mb-2">Ask SAL Anything</h3>
               <p className="text-sm text-zinc-500 mb-4">
-                Ask anything about your WhatsApp conversations
+                I've read your messages. I know your story.
               </p>
               <div className="space-y-2 text-left">
                 {suggestedQueries.map((query, i) => (

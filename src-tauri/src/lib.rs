@@ -141,13 +141,15 @@ async fn query_vault(prompt: String, state: State<'_, AppState>) -> Result<Query
         llm::LocalLLM::new().expect("Failed to initialize LLM")
     });
     
+    let sal_identity = persona::get_sal_identity();
     let personalized_context = persona::generate_system_prompt();
     
     let system_prompt = format!(
-        "{}\n\n\
+        "{}\n\n{}\n\n\
         Use the following messages from their history to answer their question. \
         Be specific - reference names, dates, and details. Don't hedge or be vague.\n\n\
         Messages:\n{}", 
+        sal_identity,
         personalized_context,
         context
     );

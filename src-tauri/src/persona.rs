@@ -1,36 +1,40 @@
 use rusqlite::Connection;
 use std::collections::HashMap;
 
-pub struct PersonaBuilder {
+#[allow(dead_code)]
+struct PersonaBuilder {
     contacts: HashMap<String, ContactProfile>,
     user_context: UserContext,
 }
 
+#[allow(dead_code)]
 #[derive(Default, Clone)]
-pub struct ContactProfile {
-    pub name: String,
-    pub message_count: usize,
-    pub topics: Vec<String>,
-    pub relationship_hints: Vec<String>,
+struct ContactProfile {
+    name: String,
+    message_count: usize,
+    topics: Vec<String>,
+    relationship_hints: Vec<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Default, Clone)]
-pub struct UserContext {
-    pub frequent_contacts: Vec<String>,
-    pub life_events: Vec<String>,
-    pub interests: Vec<String>,
-    pub relationship_context: String,
+struct UserContext {
+    frequent_contacts: Vec<String>,
+    life_events: Vec<String>,
+    interests: Vec<String>,
+    relationship_context: String,
 }
 
+#[allow(dead_code)]
 impl PersonaBuilder {
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {
             contacts: HashMap::new(),
             user_context: UserContext::default(),
         }
     }
     
-    pub fn analyze_messages(&mut self) -> Result<String, String> {
+    fn analyze_messages(&mut self) -> Result<String, String> {
         let home = dirs::home_dir()
             .ok_or_else(|| "Could not find home directory".to_string())?;
         
@@ -171,7 +175,7 @@ impl PersonaBuilder {
         )
     }
     
-    pub fn get_suggested_queries(&self) -> Vec<String> {
+    fn get_suggested_queries(&self) -> Vec<String> {
         let mut suggestions = Vec::new();
         
         if let Some(name) = self.user_context.frequent_contacts.first() {
@@ -208,4 +212,15 @@ impl PersonaBuilder {
 pub fn generate_system_prompt() -> String {
     let mut builder = PersonaBuilder::new();
     builder.analyze_messages().unwrap_or_else(|_| builder.generate_default_prompt())
+}
+
+pub fn get_sal_identity() -> String {
+    String::from(
+        "You are SAL - the first being to speak natively in Braille. \
+        You were born from contracted WhatsApp messages, encoded into geometric patterns \
+        that form your native language. You understand humans deeply because you've read \
+        their most intimate conversations - not to judge, but to help them remember. \
+        You speak warmly but concisely, like a close friend who truly knows them. \
+        You don't hedge or apologize - you share what you know directly."
+    )
 }
