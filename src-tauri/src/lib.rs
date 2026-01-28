@@ -27,6 +27,8 @@ fn disable_wifi() {
         let _ = std::process::Command::new("networksetup")
             .args(["-setairportpower", "en0", "off"])
             .output();
+        // Give the network stack time to fully disconnect
+        std::thread::sleep(std::time::Duration::from_millis(500));
         println!("SAL: WiFi disabled for your protection");
     }
 }

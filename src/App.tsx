@@ -80,7 +80,9 @@ function App() {
   const [lattice, setLattice] = useState<LatticeSnapshot | null>(null);
 
   useEffect(() => {
+    // Check immediately, then again after 1s (for WiFi disable to take effect), then every 3s
     checkNetworkStatus();
+    const initialCheck = setTimeout(checkNetworkStatus, 1000);
     loadVaultStats();
     loadFederationStatus();
     checkWhatsAppInstalled();
@@ -91,6 +93,7 @@ function App() {
     });
     
     return () => {
+      clearTimeout(initialCheck);
       clearInterval(interval);
       unlisten.then(fn => fn());
     };
