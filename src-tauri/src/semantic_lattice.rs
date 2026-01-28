@@ -253,6 +253,45 @@ impl SemanticLattice {
         }
     }
     
+    /// Learn from actual WhatsApp contacts - the scalable approach
+    /// Works for ANY WhatsApp user by querying ZWACHATSESSION
+    pub fn learn_from_contacts(&mut self, contacts: &[ContactStats]) {
+        for contact in contacts {
+            // Skip empty names or status broadcasts
+            if contact.name.is_empty() || contact.name == "status@broadcast" {
+                continue;
+            }
+            
+            // Generate Braille embedding for the contact name
+            let embedding = self.generate_embedding(&contact.name);
+            
+            // Add as meaning atom with message count as frequency
+            self.add_atom(&contact.name, embedding, contact.message_count);
+            
+            // Determine relationship type based on message frequency
+            // This heuristic works for any user:
+            // - Very high frequency (500+) = likely partner/family
+            // - High frequency (100+) = close friend
+            // - Medium frequency (20+) = friend
+            // - Lower = acquaintance
+            let rel_type = if contact.message_count >= 500 {
+                RelationType::Partner // or close family
+            } else if contact.message_count >= 100 {
+                RelationType::Family // close relationship
+            } else if contact.message_count >= 20 {
+                RelationType::Friend
+            } else {
+                RelationType::Acquaintance
+            };
+            
+            // Add self-edge to mark relationship type (for non-acquaintances)
+            if rel_type != RelationType::Acquaintance {
+                self.add_edge(vec![contact.name.clone()], contact.name.clone(), rel_type);
+            }
+        }
+    }
+
+    #[allow(dead_code)]
     fn extract_sender(&self, msg: &str) -> Option<String> {
         // Format: [timestamp] Sender: message
         if let Some(bracket_end) = msg.find(']') {
@@ -328,13 +367,14 @@ impl SemanticLattice {
     }
 }
 
-/// Build a semantic lattice from WhatsApp messages
+/// Build a semantic lattice from WhatsApp contacts
+/// This is the scalable approach - works for ANY WhatsApp user
 pub fn build_lattice_from_messages() -> SemanticLattice {
     let mut lattice = SemanticLattice::new();
     
-    // Load messages from WhatsApp DB
-    if let Ok(messages) = load_messages_for_lattice() {
-        lattice.learn_from_messages(&messages);
+    // Load actual contacts from WhatsApp DB (not message text)
+    if let Ok(contacts) = load_contacts_for_lattice() {
+        lattice.learn_from_contacts(&contacts);
     }
     
     lattice
@@ -396,6 +436,22 @@ pub fn get_lattice_snapshot() -> LatticeSnapshot {
 }
 
 fn load_messages_for_lattice() -> Result<Vec<String>, String> {
+    // This is now unused - we use load_contacts_for_lattice instead
+    Ok(vec![])
+}
+
+/// Contact with message count - the TRUE invariant shells
+#[derive(Debug)]
+struct ContactStats {
+    name: String,
+    message_count: usize,
+    is_group: bool,
+}
+
+/// Load actual contacts from WhatsApp database
+/// This scales to ANY WhatsApp user - we query the chat sessions table
+/// which contains real contact names (ZPARTNERNAME) and message counts
+fn load_contacts_for_lattice() -> Result<Vec<ContactStats>, String> {
     let home = dirs::home_dir()
         .ok_or_else(|| "Could not find home directory".to_string())?;
     
@@ -412,14 +468,34 @@ fn load_messages_for_lattice() -> Result<Vec<String>, String> {
     let conn = rusqlite::Connection::open(&db_path)
         .map_err(|e| format!("Failed to open database: {}", e))?;
     
+    // Query chat sessions to get contact names and message counts
+    // ZPARTNERNAME = actual contact name (works for any WhatsApp user)
+    // ZMESSAGECOUNTER = total messages in that chat
+    // ZCONTACTJID ending in @g.us = group chat, @s.whatsapp.net = individual
     let mut stmt = conn.prepare(
-        "SELECT ZTEXT FROM ZWAMESSAGE WHERE ZTEXT IS NOT NULL AND ZTEXT != '' ORDER BY ZMESSAGEDATE DESC LIMIT 5000"
+        r#"
+        SELECT 
+            ZPARTNERNAME,
+            ZMESSAGECOUNTER,
+            CASE WHEN ZCONTACTJID LIKE '%@g.us' THEN 1 ELSE 0 END as is_group
+        FROM ZWACHATSESSION 
+        WHERE ZPARTNERNAME IS NOT NULL 
+          AND ZPARTNERNAME != ''
+          AND ZMESSAGECOUNTER > 0
+        ORDER BY ZMESSAGECOUNTER DESC
+        "#
     ).map_err(|e| e.to_string())?;
     
-    let messages: Vec<String> = stmt.query_map([], |row| row.get(0))
-        .map_err(|e| e.to_string())?
-        .filter_map(|r| r.ok())
-        .collect();
+    let contacts: Vec<ContactStats> = stmt.query_map([], |row| {
+        Ok(ContactStats {
+            name: row.get(0)?,
+            message_count: row.get::<_, i64>(1)? as usize,
+            is_group: row.get::<_, i64>(2)? == 1,
+        })
+    })
+    .map_err(|e| e.to_string())?
+    .filter_map(|r| r.ok())
+    .collect();
     
-    Ok(messages)
+    Ok(contacts)
 }
