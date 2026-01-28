@@ -102,9 +102,13 @@ function App() {
 
   async function checkWhatsAppInstalled() {
     try {
-      await invoke("import_messages", { source: "whatsapp", filePath: null });
-      setWhatsappDetected(true);
-    } catch {
+      const status = await invoke<{ available: boolean; message_count: number }>("check_whatsapp_available");
+      setWhatsappDetected(status.available);
+      if (status.available && status.message_count > 0) {
+        setVaultStats(prev => ({ ...prev, total_messages: status.message_count }));
+      }
+    } catch (e) {
+      console.error("WhatsApp check failed:", e);
       setWhatsappDetected(false);
     }
   }

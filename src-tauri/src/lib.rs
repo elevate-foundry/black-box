@@ -182,6 +182,45 @@ fn opt_out_federation(state: State<AppState>) -> Result<FederationStatus, String
     })
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WhatsAppStatus {
+    pub available: bool,
+    pub message_count: usize,
+}
+
+#[tauri::command]
+fn check_whatsapp_available() -> Result<WhatsAppStatus, String> {
+    let home = dirs::home_dir()
+        .ok_or_else(|| "Could not find home directory".to_string())?;
+    
+    let db_path = home
+        .join("Library")
+        .join("Group Containers")
+        .join("group.net.whatsapp.WhatsApp.shared")
+        .join("ChatStorage.sqlite");
+    
+    if !db_path.exists() {
+        return Ok(WhatsAppStatus {
+            available: false,
+            message_count: 0,
+        });
+    }
+    
+    let conn = rusqlite::Connection::open(&db_path)
+        .map_err(|e| format!("Failed to open WhatsApp database: {}", e))?;
+    
+    let count: usize = conn.query_row(
+        "SELECT COUNT(*) FROM ZWAMESSAGE WHERE ZTEXT IS NOT NULL AND ZTEXT != ''",
+        [],
+        |row| row.get(0)
+    ).unwrap_or(0);
+    
+    Ok(WhatsAppStatus {
+        available: true,
+        message_count: count,
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let data_dir = dirs::data_local_dir()
@@ -212,6 +251,7 @@ pub fn run() {
             get_federation_status,
             opt_in_federation,
             opt_out_federation,
+            check_whatsapp_available,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
