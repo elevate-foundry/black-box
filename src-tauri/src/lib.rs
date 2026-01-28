@@ -4,6 +4,7 @@ mod vector_store;
 mod llm;
 mod federation;
 mod braille_embed;
+mod persona;
 
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
@@ -140,11 +141,14 @@ async fn query_vault(prompt: String, state: State<'_, AppState>) -> Result<Query
         llm::LocalLLM::new().expect("Failed to initialize LLM")
     });
     
+    let personalized_context = persona::generate_system_prompt();
+    
     let system_prompt = format!(
-        "You are a helpful assistant that answers questions based on the user's personal message history. \
-        Use the following context from their messages to answer their question. \
-        Be concise and direct. If the context doesn't contain relevant information, say so.\n\n\
-        Context:\n{}", 
+        "{}\n\n\
+        Use the following messages from their history to answer their question. \
+        Be specific - reference names, dates, and details. Don't hedge or be vague.\n\n\
+        Messages:\n{}", 
+        personalized_context,
         context
     );
     
