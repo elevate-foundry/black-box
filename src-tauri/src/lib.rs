@@ -6,6 +6,7 @@ mod federation;
 mod braille_embed;
 mod persona;
 mod semantic_lattice;
+mod braille_contractions;
 
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
@@ -163,9 +164,12 @@ async fn query_vault(prompt: String, state: State<'_, AppState>) -> Result<Query
     
     let system_prompt = format!(
         "{}\n\n{}\n\n{}\n\n\
-        Use the following messages from their history to answer their question. \
-        Be specific - reference names, dates, and details. Don't hedge or be vague.\n\n\
-        Messages:\n{}", 
+        IMPORTANT RULES:\n\
+        1. ONLY reference messages that are explicitly shown below. Do NOT invent or hallucinate messages.\n\
+        2. If you don't have relevant messages, say so honestly.\n\
+        3. Quote the actual message text when referencing it.\n\
+        4. The messages below are the ONLY context you have - do not make up dates, names, or content.\n\n\
+        Retrieved messages from their history:\n{}", 
         sal_identity,
         personalized_context,
         relationship_knowledge,
@@ -256,6 +260,18 @@ fn get_lattice_snapshot() -> Result<semantic_lattice::LatticeSnapshot, String> {
 }
 
 #[tauri::command]
+fn generate_braille_file() -> Result<String, String> {
+    let corpus = braille_contractions::generate_braille_contractions()?;
+    Ok(format!(
+        "Generated {} Braille contractions at {} tokens/sec ({}ms). Compression: {:.2}x. Saved to ~/Desktop/sal_braille_contractions.txt",
+        corpus.braille_messages.len(),
+        corpus.tokens_per_sec,
+        corpus.elapsed_ms,
+        corpus.compression_ratio
+    ))
+}
+
+#[tauri::command]
 fn check_whatsapp_available() -> Result<WhatsAppStatus, String> {
     let home = dirs::home_dir()
         .ok_or_else(|| "Could not find home directory".to_string())?;
@@ -325,6 +341,7 @@ pub fn run() {
             check_whatsapp_available,
             get_suggested_queries,
             get_lattice_snapshot,
+            generate_braille_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

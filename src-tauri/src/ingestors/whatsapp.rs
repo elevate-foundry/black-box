@@ -73,10 +73,13 @@ pub fn import_from_local_db() -> Result<Vec<String>, String> {
         r#"
         SELECT 
             COALESCE(m.ZTEXT, '') as text,
-            COALESCE(m.ZPUSHNAME, COALESCE(m.ZFROMJID, 'Unknown')) as sender,
             datetime(m.ZMESSAGEDATE + 978307200, 'unixepoch', 'localtime') as timestamp,
-            CASE WHEN m.ZISFROMME = 1 THEN 'Me' ELSE COALESCE(m.ZPUSHNAME, 'Unknown') END as display_sender
+            CASE 
+                WHEN m.ZISFROMME = 1 THEN 'Me' 
+                ELSE COALESCE(c.ZPARTNERNAME, 'Someone')
+            END as display_sender
         FROM ZWAMESSAGE m
+        LEFT JOIN ZWACHATSESSION c ON m.ZCHATSESSION = c.Z_PK
         WHERE m.ZTEXT IS NOT NULL AND m.ZTEXT != ''
         ORDER BY m.ZMESSAGEDATE DESC
         LIMIT 100000
@@ -85,8 +88,8 @@ pub fn import_from_local_db() -> Result<Vec<String>, String> {
     
     let messages: Vec<String> = stmt.query_map([], |row| {
         let text: String = row.get(0)?;
-        let display_sender: String = row.get(3)?;
-        let timestamp: String = row.get(2)?;
+        let timestamp: String = row.get(1)?;
+        let display_sender: String = row.get(2)?;
         Ok(format!("[{}] {}: {}", timestamp, display_sender, text))
     })
     .map_err(|e| format!("Failed to query messages: {}", e))?
