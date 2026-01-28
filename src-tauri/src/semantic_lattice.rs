@@ -68,6 +68,7 @@ pub struct SemanticLattice {
 }
 
 #[derive(Default)]
+#[allow(dead_code)]
 struct EntityContext {
     message_count: usize,
     mention_count: usize,
@@ -76,6 +77,7 @@ struct EntityContext {
     is_sender: bool,
 }
 
+#[allow(dead_code)]
 impl EntityContext {
     fn new() -> Self {
         Self::default()
@@ -152,6 +154,7 @@ impl SemanticLattice {
     }
 
     /// Learn relationships from co-occurrence patterns
+    #[allow(dead_code)]
     pub fn learn_from_messages(&mut self, messages: &[String]) {
         // Blocklist: common words that aren't people
         let blocklist = [
@@ -255,7 +258,7 @@ impl SemanticLattice {
     
     /// Learn from actual WhatsApp contacts - the scalable approach
     /// Works for ANY WhatsApp user by querying ZWACHATSESSION
-    pub fn learn_from_contacts(&mut self, contacts: &[ContactStats]) {
+    fn learn_from_contacts(&mut self, contacts: &[ContactStats]) {
         for contact in contacts {
             // Skip empty names or status broadcasts
             if contact.name.is_empty() || contact.name == "status@broadcast" {
@@ -435,6 +438,7 @@ pub fn get_lattice_snapshot() -> LatticeSnapshot {
     }
 }
 
+#[allow(dead_code)]
 fn load_messages_for_lattice() -> Result<Vec<String>, String> {
     // This is now unused - we use load_contacts_for_lattice instead
     Ok(vec![])
@@ -445,6 +449,7 @@ fn load_messages_for_lattice() -> Result<Vec<String>, String> {
 struct ContactStats {
     name: String,
     message_count: usize,
+    #[allow(dead_code)]
     is_group: bool,
 }
 
