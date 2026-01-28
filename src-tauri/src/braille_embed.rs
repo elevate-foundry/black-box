@@ -2,7 +2,10 @@ use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::collections::hash_map::DefaultHasher;
 
-const EMBED_DIM: usize = 64;
+/// 8-dot Braille space: 2^8 = 256 dimensions
+/// Each dimension corresponds to one possible 8-bit pattern
+/// This allows encoding of ANY modality: text, sound, math, music, images
+const EMBED_DIM: usize = 256;
 
 pub struct BrailleEmbedder {
     contractions: HashMap<u64, Vec<f32>>,
@@ -63,23 +66,36 @@ impl BrailleEmbedder {
         embed
     }
 
+    /// True 8-dot Braille encoding: each byte directly activates its dimension
+    /// This creates a 256-dimensional space where:
+    /// - Text: each ASCII/UTF-8 byte activates dimension [0-255]
+    /// - Sound: audio samples (8-bit) map directly to dimensions
+    /// - Math: Unicode math symbols map to their byte patterns
+    /// - Music: MIDI notes (0-127) + velocity map to dimensions
+    /// - Images: pixel values (0-255) activate corresponding dimensions
     fn geometric_embed(&self, word: &str) -> Vec<f32> {
         let mut embed = vec![0.0; EMBED_DIM];
         let bytes = word.as_bytes();
         
         for (pos, &byte) in bytes.iter().enumerate() {
+            // Direct 8-dot mapping: byte value IS the dimension
+            // This is the key insight - each possible 8-bit pattern
+            // has its own dimension in Braille space
+            embed[byte as usize] += 1.0 / (pos as f32 + 1.0);
+            
+            // Position-weighted bit decomposition for finer structure
             for bit in 0..8 {
                 let bit_val = ((byte >> bit) & 1) as f32;
+                // Map each bit to a dimension based on position
                 let idx = (pos * 8 + bit) % EMBED_DIM;
-                embed[idx] += bit_val * (1.0 / (pos as f32 + 1.0));
+                embed[idx] += bit_val * 0.1 / (pos as f32 + 1.0);
             }
             
-            let char_idx = (byte as usize) % EMBED_DIM;
-            embed[char_idx] += 1.0;
-            
+            // Bigram features for sequential patterns
             if pos > 0 {
-                let bigram_idx = ((bytes[pos - 1] as usize) * 256 + (byte as usize)) % EMBED_DIM;
-                embed[bigram_idx] += 0.5;
+                let bigram = ((bytes[pos - 1] as u16) << 8) | (byte as u16);
+                let bigram_idx = (bigram as usize) % EMBED_DIM;
+                embed[bigram_idx] += 0.5 / (pos as f32 + 1.0);
             }
         }
 

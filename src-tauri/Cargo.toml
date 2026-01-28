@@ -29,6 +29,7 @@ rayon = "1.10"
 dirs = "5"
 walkdir = "2"
 thiserror = "2"
+lazy_static = "1.4"
 
 [features]
 default = ["custom-protocol"]

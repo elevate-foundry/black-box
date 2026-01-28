@@ -7,6 +7,7 @@ mod braille_embed;
 mod persona;
 mod semantic_lattice;
 mod braille_contractions;
+mod audit_log;
 
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
@@ -66,16 +67,23 @@ fn check_offline_status() -> bool {
         ("208.67.222.222", 53),
     ];
     
+    let mut is_offline = true;
+    
     for (host, port) in test_hosts {
         if TcpStream::connect_timeout(
             &format!("{}:{}", host, port).parse().unwrap(),
             Duration::from_millis(500),
         ).is_ok() {
-            return false;
+            is_offline = false;
+            break;
         }
     }
     
-    true
+    // Log network status to audit trail
+    let status = if is_offline { "OFFLINE" } else { "ONLINE" };
+    audit_log::log_event("NETWORK_CHECK", &format!("Network status: {}", status), status);
+    
+    is_offline
 }
 
 #[tauri::command]
@@ -128,8 +136,11 @@ async fn import_messages(source: String, file_path: Option<String>, state: State
 #[tauri::command]
 async fn query_vault(prompt: String, state: State<'_, AppState>) -> Result<QueryResponse, String> {
     if !check_offline_status() {
+        audit_log::log_event("QUERY_BLOCKED", &format!("Query blocked while online: {}", truncate_safe(&prompt, 50)), "ONLINE");
         return Err("For your security, please disconnect Wi-Fi to use the Vault.".to_string());
     }
+    
+    audit_log::log_event("QUERY", &format!("Query executed: {}", truncate_safe(&prompt, 50)), "OFFLINE");
     
     let mut braille = state.braille_embedder.lock().map_err(|e| e.to_string())?;
     let query_embedding = braille.embed(&prompt);
@@ -260,6 +271,16 @@ fn get_lattice_snapshot() -> Result<semantic_lattice::LatticeSnapshot, String> {
 }
 
 #[tauri::command]
+fn get_audit_log() -> Vec<audit_log::AuditEntry> {
+    audit_log::get_audit_entries()
+}
+
+#[tauri::command]
+fn get_audit_summary() -> Option<audit_log::AuditSummary> {
+    audit_log::get_audit_summary()
+}
+
+#[tauri::command]
 fn generate_braille_file() -> Result<String, String> {
     let corpus = braille_contractions::generate_braille_contractions()?;
     Ok(format!(
@@ -306,6 +327,10 @@ fn check_whatsapp_available() -> Result<WhatsAppStatus, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Initialize audit log first
+    audit_log::init_audit_log().expect("Failed to initialize audit log");
+    audit_log::log_event("WIFI_DISABLE", "Disabling WiFi for security", "STARTUP");
+    
     // SAL auto-disables WiFi on startup for maximum security
     disable_wifi();
     
@@ -342,6 +367,8 @@ pub fn run() {
             get_suggested_queries,
             get_lattice_snapshot,
             generate_braille_file,
+            get_audit_log,
+            get_audit_summary,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
