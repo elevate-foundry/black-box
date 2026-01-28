@@ -1,26 +1,24 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
 import { 
   Shield, 
   Wifi, 
   WifiOff, 
   MessageSquare, 
-  Upload, 
   Search,
   Lock,
   Loader2,
   Send,
-  Database,
-  Brain,
   CheckCircle2,
   AlertTriangle,
-  FileText
+  Smartphone,
+  Zap,
+  Users,
+  ArrowRight
 } from "lucide-react";
 
 type NetworkStatus = "offline" | "online" | "checking";
-type AppView = "dashboard" | "import" | "chat" | "privacy";
-type ImportSource = "imessage" | "whatsapp" | "slack";
+type AppView = "onboarding" | "chat" | "settings";
 
 interface FederationStatus {
   opted_in: boolean;
@@ -43,29 +41,37 @@ interface VaultStats {
 
 function App() {
   const [networkStatus, setNetworkStatus] = useState<NetworkStatus>("checking");
-  const [currentView, setCurrentView] = useState<AppView>("dashboard");
+  const [currentView, setCurrentView] = useState<AppView>("onboarding");
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const [vaultStats, setVaultStats] = useState<VaultStats>({
     total_messages: 0,
     sources: [],
     last_indexed: null,
   });
-  const [importProgress, setImportProgress] = useState<number | null>(null);
   const [federationStatus, setFederationStatus] = useState<FederationStatus>({
     opted_in: false,
     embeddings_contributed: 0,
     collective_users: 0,
   });
+  const [whatsappDetected, setWhatsappDetected] = useState<boolean | null>(null);
 
   useEffect(() => {
     checkNetworkStatus();
     loadVaultStats();
     loadFederationStatus();
+    checkWhatsAppInstalled();
     const interval = setInterval(checkNetworkStatus, 3000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (vaultStats.total_messages > 0) {
+      setCurrentView("chat");
+    }
+  }, [vaultStats.total_messages]);
 
   async function checkNetworkStatus() {
     try {
@@ -94,6 +100,29 @@ function App() {
     }
   }
 
+  async function checkWhatsAppInstalled() {
+    try {
+      await invoke("import_messages", { source: "whatsapp", filePath: null });
+      setWhatsappDetected(true);
+    } catch {
+      setWhatsappDetected(false);
+    }
+  }
+
+  async function handleImportWhatsApp() {
+    setIsImporting(true);
+    try {
+      await invoke("import_messages", { source: "whatsapp", filePath: null });
+      await loadVaultStats();
+      setCurrentView("chat");
+    } catch (e) {
+      console.error("Import failed:", e);
+      alert(`Import failed: ${e}`);
+    } finally {
+      setIsImporting(false);
+    }
+  }
+
   async function handleOptIn() {
     try {
       const status = await invoke<FederationStatus>("opt_in_federation");
@@ -112,41 +141,6 @@ function App() {
     }
   }
 
-  async function handleImport(source: ImportSource, filePath?: string) {
-    setImportProgress(0);
-    try {
-      await invoke("import_messages", { source, filePath });
-      setImportProgress(100);
-      await loadVaultStats();
-      setTimeout(() => {
-        setImportProgress(null);
-        setCurrentView("dashboard");
-      }, 1500);
-    } catch (e) {
-      console.error("Import failed:", e);
-      setImportProgress(null);
-      alert(`Import failed: ${e}`);
-    }
-  }
-
-  async function handleWhatsAppFilePicker() {
-    try {
-      const selected = await open({
-        multiple: false,
-        filters: [
-          { name: "WhatsApp Export", extensions: ["txt", "zip"] }
-        ],
-        title: "Select WhatsApp Chat Export"
-      });
-      
-      if (selected && typeof selected === "string") {
-        await handleImport("whatsapp", selected);
-      }
-    } catch (e) {
-      console.error("File picker error:", e);
-    }
-  }
-
   async function handleSendMessage() {
     if (!inputValue.trim() || isProcessing) return;
     if (networkStatus === "online") return;
@@ -157,7 +151,7 @@ function App() {
       content: inputValue,
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    setMessages((prev: Message[]) => [...prev, userMessage]);
     setInputValue("");
     setIsProcessing(true);
 
@@ -174,371 +168,206 @@ function App() {
         sources: response.sources,
       };
 
-      setMessages((prev) => [...prev, assistantMessage]);
+      setMessages((prev: Message[]) => [...prev, assistantMessage]);
     } catch (e) {
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
         content: `Error: ${e}`,
       };
-      setMessages((prev) => [...prev, errorMessage]);
+      setMessages((prev: Message[]) => [...prev, errorMessage]);
     } finally {
       setIsProcessing(false);
     }
   }
 
   return (
-    <div className="min-h-screen bg-vault-bg text-zinc-100 flex flex-col">
-      {/* Status Bar */}
-      <header className="flex items-center justify-between px-6 py-4 border-b border-vault-border bg-vault-surface">
+    <div className="min-h-screen bg-[#0a0a0b] text-zinc-100 flex flex-col">
+      {/* Minimal Header */}
+      <header className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
         <div className="flex items-center gap-3">
-          <Shield className="w-8 h-8 text-vault-accent" />
-          <h1 className="text-xl font-semibold tracking-tight">The Black Box</h1>
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center">
+            <MessageSquare className="w-4 h-4 text-white" />
+          </div>
+          <span className="font-semibold">WhatsApp Vault</span>
         </div>
         
         <div className="flex items-center gap-4">
-          {/* Network Status Indicator */}
-          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium ${
+          {/* Network Status */}
+          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium ${
             networkStatus === "offline" 
-              ? "bg-vault-accent/20 text-vault-accent" 
+              ? "bg-green-500/20 text-green-400" 
               : networkStatus === "online"
-              ? "bg-vault-danger/20 text-vault-danger"
-              : "bg-vault-warning/20 text-vault-warning"
+              ? "bg-red-500/20 text-red-400"
+              : "bg-yellow-500/20 text-yellow-400"
           }`}>
             {networkStatus === "offline" ? (
               <>
-                <WifiOff className="w-4 h-4 status-indicator" />
-                <span>Vault Secured</span>
+                <WifiOff className="w-3 h-3" />
+                <span>Secure</span>
               </>
             ) : networkStatus === "online" ? (
               <>
-                <Wifi className="w-4 h-4" />
-                <span>Network Detected</span>
+                <Wifi className="w-3 h-3" />
+                <span>Online</span>
               </>
             ) : (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Checking...</span>
-              </>
+              <Loader2 className="w-3 h-3 animate-spin" />
             )}
           </div>
+
+          {/* Settings */}
+          <button
+            onClick={() => setCurrentView(currentView === "settings" ? "chat" : "settings")}
+            className={`p-2 rounded-lg transition-colors ${
+              currentView === "settings" 
+                ? "bg-zinc-800 text-white" 
+                : "text-zinc-500 hover:text-white hover:bg-zinc-800"
+            }`}
+          >
+            <Shield className="w-5 h-5" />
+          </button>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 flex">
-        {/* Sidebar */}
-        <nav className="w-64 border-r border-vault-border bg-vault-surface p-4 flex flex-col gap-2">
-          <button
-            onClick={() => setCurrentView("dashboard")}
-            className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-              currentView === "dashboard"
-                ? "bg-vault-accent/20 text-vault-accent"
-                : "hover:bg-vault-border text-zinc-400 hover:text-zinc-100"
-            }`}
-          >
-            <Database className="w-5 h-5" />
-            <span>Dashboard</span>
-          </button>
-          
-          <button
-            onClick={() => setCurrentView("import")}
-            className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-              currentView === "import"
-                ? "bg-vault-accent/20 text-vault-accent"
-                : "hover:bg-vault-border text-zinc-400 hover:text-zinc-100"
-            }`}
-          >
-            <Upload className="w-5 h-5" />
-            <span>Import Data</span>
-          </button>
-          
-          <button
-            onClick={() => setCurrentView("chat")}
-            disabled={networkStatus === "online"}
-            className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-              currentView === "chat"
-                ? "bg-vault-accent/20 text-vault-accent"
-                : networkStatus === "online"
-                ? "opacity-50 cursor-not-allowed text-zinc-600"
-                : "hover:bg-vault-border text-zinc-400 hover:text-zinc-100"
-            }`}
-          >
-            <MessageSquare className="w-5 h-5" />
-            <span>Query Vault</span>
-            {networkStatus === "online" && <Lock className="w-4 h-4 ml-auto" />}
-          </button>
+      <main className="flex-1 flex flex-col">
+        {currentView === "onboarding" && (
+          <OnboardingView
+            whatsappDetected={whatsappDetected}
+            isImporting={isImporting}
+            onImport={handleImportWhatsApp}
+          />
+        )}
 
-          <button
-            onClick={() => setCurrentView("privacy")}
-            className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-              currentView === "privacy"
-                ? "bg-vault-accent/20 text-vault-accent"
-                : "hover:bg-vault-border text-zinc-400 hover:text-zinc-100"
-            }`}
-          >
-            <Shield className="w-5 h-5" />
-            <span>Privacy & Sync</span>
-            {federationStatus.opted_in && <CheckCircle2 className="w-4 h-4 ml-auto text-vault-accent" />}
-          </button>
+        {currentView === "chat" && (
+          <ChatView
+            messages={messages}
+            inputValue={inputValue}
+            setInputValue={setInputValue}
+            onSend={handleSendMessage}
+            isProcessing={isProcessing}
+            networkStatus={networkStatus}
+            vaultStats={vaultStats}
+          />
+        )}
 
-          <div className="mt-auto pt-4 border-t border-vault-border">
-            <div className="text-xs text-zinc-500 space-y-1">
-              <p>Messages indexed: <span className="text-zinc-300">{vaultStats.total_messages.toLocaleString()}</span></p>
-              <p>Sources: <span className="text-zinc-300">{vaultStats.sources.length}</span></p>
-            </div>
-          </div>
-        </nav>
-
-        {/* Content Area */}
-        <div className="flex-1 p-6">
-          {currentView === "dashboard" && (
-            <DashboardView 
-              networkStatus={networkStatus} 
-              vaultStats={vaultStats}
-              onNavigate={setCurrentView}
-            />
-          )}
-          
-          {currentView === "import" && (
-            <ImportView 
-              onImport={handleImport}
-              onWhatsAppFilePicker={handleWhatsAppFilePicker}
-              progress={importProgress}
-            />
-          )}
-          
-          {currentView === "chat" && (
-            <ChatView
-              messages={messages}
-              inputValue={inputValue}
-              setInputValue={setInputValue}
-              onSend={handleSendMessage}
-              isProcessing={isProcessing}
-              networkStatus={networkStatus}
-            />
-          )}
-
-          {currentView === "privacy" && (
-            <PrivacyView
-              federationStatus={federationStatus}
-              onOptIn={handleOptIn}
-              onOptOut={handleOptOut}
-            />
-          )}
-        </div>
+        {currentView === "settings" && (
+          <SettingsView
+            federationStatus={federationStatus}
+            onOptIn={handleOptIn}
+            onOptOut={handleOptOut}
+            vaultStats={vaultStats}
+            onBack={() => setCurrentView("chat")}
+          />
+        )}
       </main>
     </div>
   );
 }
 
-function DashboardView({ 
-  networkStatus, 
-  vaultStats,
-  onNavigate 
-}: { 
-  networkStatus: NetworkStatus;
-  vaultStats: VaultStats;
-  onNavigate: (view: AppView) => void;
-}) {
-  return (
-    <div className="fade-in max-w-4xl">
-      <h2 className="text-2xl font-semibold mb-6">Your Digital Vault</h2>
-      
-      {/* Security Status Card */}
-      <div className={`p-6 rounded-xl border mb-6 ${
-        networkStatus === "offline"
-          ? "bg-vault-accent/10 border-vault-accent/30"
-          : "bg-vault-danger/10 border-vault-danger/30"
-      }`}>
-        <div className="flex items-start gap-4">
-          {networkStatus === "offline" ? (
-            <CheckCircle2 className="w-8 h-8 text-vault-accent flex-shrink-0" />
-          ) : (
-            <AlertTriangle className="w-8 h-8 text-vault-danger flex-shrink-0" />
-          )}
-          <div>
-            <h3 className={`text-lg font-semibold ${
-              networkStatus === "offline" ? "text-vault-accent" : "text-vault-danger"
-            }`}>
-              {networkStatus === "offline" 
-                ? "Vault is Secured" 
-                : "Network Connection Detected"}
-            </h3>
-            <p className="text-zinc-400 mt-1">
-              {networkStatus === "offline"
-                ? "Your data is completely isolated. No bytes can leave this device."
-                : "For your security, please enable Airplane Mode to access the vault. Your memories deserve military-grade privacy."}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Stats Grid */}
-      <div className="grid grid-cols-3 gap-4 mb-8">
-        <div className="bg-vault-surface border border-vault-border rounded-xl p-5">
-          <div className="flex items-center gap-3 mb-3">
-            <MessageSquare className="w-5 h-5 text-vault-accent" />
-            <span className="text-zinc-400 text-sm">Messages</span>
-          </div>
-          <p className="text-3xl font-semibold">{vaultStats.total_messages.toLocaleString()}</p>
-        </div>
-        
-        <div className="bg-vault-surface border border-vault-border rounded-xl p-5">
-          <div className="flex items-center gap-3 mb-3">
-            <Database className="w-5 h-5 text-vault-accent" />
-            <span className="text-zinc-400 text-sm">Sources</span>
-          </div>
-          <p className="text-3xl font-semibold">{vaultStats.sources.length}</p>
-        </div>
-        
-        <div className="bg-vault-surface border border-vault-border rounded-xl p-5">
-          <div className="flex items-center gap-3 mb-3">
-            <Brain className="w-5 h-5 text-vault-accent" />
-            <span className="text-zinc-400 text-sm">Model</span>
-          </div>
-          <p className="text-lg font-semibold">Phi-3 Mini</p>
-          <p className="text-xs text-zinc-500">3.8B params</p>
-        </div>
-      </div>
-
-      {/* Quick Actions */}
-      <h3 className="text-lg font-semibold mb-4">Quick Actions</h3>
-      <div className="grid grid-cols-2 gap-4">
-        <button
-          onClick={() => onNavigate("import")}
-          className="flex items-center gap-4 p-5 bg-vault-surface border border-vault-border rounded-xl hover:border-vault-accent/50 transition-colors text-left"
-        >
-          <Upload className="w-8 h-8 text-vault-accent" />
-          <div>
-            <p className="font-medium">Import Messages</p>
-            <p className="text-sm text-zinc-500">Add iMessage, WhatsApp, or Slack data</p>
-          </div>
-        </button>
-        
-        <button
-          onClick={() => onNavigate("chat")}
-          disabled={networkStatus === "online"}
-          className={`flex items-center gap-4 p-5 bg-vault-surface border border-vault-border rounded-xl transition-colors text-left ${
-            networkStatus === "online"
-              ? "opacity-50 cursor-not-allowed"
-              : "hover:border-vault-accent/50"
-          }`}
-        >
-          <Search className="w-8 h-8 text-vault-accent" />
-          <div>
-            <p className="font-medium">Query Your Memory</p>
-            <p className="text-sm text-zinc-500">
-              {networkStatus === "online" 
-                ? "Enable Airplane Mode first" 
-                : "Ask anything about your past"}
-            </p>
-          </div>
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function ImportView({ 
+function OnboardingView({
+  whatsappDetected,
+  isImporting,
   onImport,
-  onWhatsAppFilePicker,
-  progress 
-}: { 
-  onImport: (source: ImportSource) => void;
-  onWhatsAppFilePicker: () => void;
-  progress: number | null;
+}: {
+  whatsappDetected: boolean | null;
+  isImporting: boolean;
+  onImport: () => void;
 }) {
   return (
-    <div className="fade-in max-w-2xl">
-      <h2 className="text-2xl font-semibold mb-2">Import Your Data</h2>
-      <p className="text-zinc-400 mb-8">
-        Digitize your memories. All processing happens locally on your device.
-      </p>
-
-      {progress !== null && (
-        <div className="mb-8 p-4 bg-vault-surface border border-vault-border rounded-xl">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium">Digitizing your memory...</span>
-            <span className="text-sm text-vault-accent">{progress}%</span>
+    <div className="flex-1 flex items-center justify-center p-8">
+      <div className="max-w-md w-full">
+        {/* Hero */}
+        <div className="text-center mb-12">
+          <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center mx-auto mb-6 shadow-lg shadow-green-500/20">
+            <MessageSquare className="w-10 h-10 text-white" />
           </div>
-          <div className="h-2 bg-vault-border rounded-full overflow-hidden">
-            <div 
-              className="h-full bg-vault-accent transition-all duration-300"
-              style={{ width: `${progress}%` }}
-            />
+          <h1 className="text-3xl font-bold mb-3">Your WhatsApp, Your AI</h1>
+          <p className="text-zinc-400">
+            Search your entire WhatsApp history with AI. 
+            <span className="text-green-400"> 100% offline. 100% private.</span>
+          </p>
+        </div>
+
+        {/* Status Card */}
+        <div className="bg-zinc-900 rounded-2xl p-6 mb-6 border border-zinc-800">
+          {whatsappDetected === null ? (
+            <div className="flex items-center gap-4">
+              <Loader2 className="w-8 h-8 text-green-500 animate-spin" />
+              <div>
+                <p className="font-medium">Detecting WhatsApp...</p>
+                <p className="text-sm text-zinc-500">Looking for your messages</p>
+              </div>
+            </div>
+          ) : whatsappDetected ? (
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-green-500/20 flex items-center justify-center">
+                <CheckCircle2 className="w-6 h-6 text-green-500" />
+              </div>
+              <div className="flex-1">
+                <p className="font-medium text-green-400">WhatsApp Desktop Found!</p>
+                <p className="text-sm text-zinc-500">Ready to import your messages</p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-yellow-500/20 flex items-center justify-center">
+                <AlertTriangle className="w-6 h-6 text-yellow-500" />
+              </div>
+              <div className="flex-1">
+                <p className="font-medium text-yellow-400">WhatsApp Desktop Not Found</p>
+                <p className="text-sm text-zinc-500">Install WhatsApp Desktop to continue</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Import Button */}
+        <button
+          onClick={onImport}
+          disabled={!whatsappDetected || isImporting}
+          className="w-full py-4 px-6 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-semibold rounded-xl hover:from-green-600 hover:to-emerald-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 shadow-lg shadow-green-500/20"
+        >
+          {isImporting ? (
+            <>
+              <Loader2 className="w-5 h-5 animate-spin" />
+              <span>Importing Messages...</span>
+            </>
+          ) : (
+            <>
+              <Zap className="w-5 h-5" />
+              <span>Import My WhatsApp</span>
+              <ArrowRight className="w-5 h-5" />
+            </>
+          )}
+        </button>
+
+        {/* Features */}
+        <div className="mt-8 grid grid-cols-3 gap-4">
+          <div className="text-center">
+            <div className="w-10 h-10 rounded-lg bg-zinc-800 flex items-center justify-center mx-auto mb-2">
+              <WifiOff className="w-5 h-5 text-green-500" />
+            </div>
+            <p className="text-xs text-zinc-500">Works Offline</p>
+          </div>
+          <div className="text-center">
+            <div className="w-10 h-10 rounded-lg bg-zinc-800 flex items-center justify-center mx-auto mb-2">
+              <Shield className="w-5 h-5 text-green-500" />
+            </div>
+            <p className="text-xs text-zinc-500">Private by Design</p>
+          </div>
+          <div className="text-center">
+            <div className="w-10 h-10 rounded-lg bg-zinc-800 flex items-center justify-center mx-auto mb-2">
+              <Smartphone className="w-5 h-5 text-green-500" />
+            </div>
+            <p className="text-xs text-zinc-500">Local AI</p>
           </div>
         </div>
-      )}
 
-      <div className="space-y-4">
-        {/* iMessage */}
-        <button
-          onClick={() => onImport("imessage")}
-          disabled={progress !== null}
-          className="w-full flex items-center gap-4 p-5 bg-vault-surface border border-vault-border rounded-xl hover:border-vault-accent/50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <span className="text-3xl">💬</span>
-          <div className="flex-1">
-            <p className="font-medium">iMessage</p>
-            <p className="text-sm text-zinc-500">Import from your local chat.db (requires Full Disk Access)</p>
-          </div>
-          <Upload className="w-5 h-5 text-zinc-500" />
-        </button>
-
-        {/* WhatsApp - direct from local database */}
-        <button
-          onClick={() => onImport("whatsapp")}
-          disabled={progress !== null}
-          className="w-full flex items-center gap-4 p-5 bg-vault-surface border border-vault-border rounded-xl hover:border-vault-accent/50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <span className="text-3xl">📱</span>
-          <div className="flex-1">
-            <p className="font-medium">WhatsApp Desktop</p>
-            <p className="text-sm text-zinc-500">Import directly from WhatsApp Desktop (no export needed!)</p>
-          </div>
-          <Database className="w-5 h-5 text-vault-accent" />
-        </button>
-        
-        {/* WhatsApp - file picker fallback */}
-        <button
-          onClick={onWhatsAppFilePicker}
-          disabled={progress !== null}
-          className="w-full flex items-center gap-4 p-5 bg-vault-surface/50 border border-vault-border rounded-xl hover:border-vault-accent/50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <span className="text-3xl">�</span>
-          <div className="flex-1">
-            <p className="font-medium">WhatsApp Export File</p>
-            <p className="text-sm text-zinc-500">Or select a .txt export file manually</p>
-          </div>
-          <FileText className="w-5 h-5 text-zinc-500" />
-        </button>
-
-        {/* Slack */}
-        <button
-          onClick={() => onImport("slack")}
-          disabled={progress !== null}
-          className="w-full flex items-center gap-4 p-5 bg-vault-surface border border-vault-border rounded-xl hover:border-vault-accent/50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <span className="text-3xl">💼</span>
-          <div className="flex-1">
-            <p className="font-medium">Slack</p>
-            <p className="text-sm text-zinc-500">Import from Slack workspace export (JSON)</p>
-          </div>
-          <Upload className="w-5 h-5 text-zinc-500" />
-        </button>
-      </div>
-
-      <div className="mt-8 p-4 bg-vault-surface/50 border border-vault-border rounded-xl">
-        <p className="text-sm text-zinc-500">
-          <strong className="text-zinc-300">Privacy Note:</strong> Your data never leaves this device. 
-          The Black Box creates a local vector index for semantic search. No cloud. No sync. No leaks.
-        </p>
-      </div>
-
-      <div className="mt-4 p-4 bg-vault-accent/10 border border-vault-accent/30 rounded-xl">
-        <p className="text-sm text-vault-accent">
-          <strong>WhatsApp Desktop detected!</strong> Click "WhatsApp Desktop" to import your messages directly - no export needed. Your messages are stored locally in plaintext.
+        {/* Privacy Note */}
+        <p className="text-xs text-zinc-600 text-center mt-8">
+          Your messages never leave this device. We can't see them. No one can.
         </p>
       </div>
     </div>
@@ -552,6 +381,7 @@ function ChatView({
   onSend,
   isProcessing,
   networkStatus,
+  vaultStats,
 }: {
   messages: Message[];
   inputValue: string;
@@ -559,24 +389,60 @@ function ChatView({
   onSend: () => void;
   isProcessing: boolean;
   networkStatus: NetworkStatus;
+  vaultStats: VaultStats;
 }) {
+  const isLocked = networkStatus === "online";
+
   return (
-    <div className="fade-in h-full flex flex-col">
-      <div className="mb-4">
-        <h2 className="text-2xl font-semibold">Query Your Vault</h2>
-        <p className="text-zinc-400">Ask anything about your past conversations</p>
+    <div className="flex-1 flex flex-col max-w-3xl mx-auto w-full p-6">
+      {/* Stats Bar */}
+      <div className="flex items-center justify-between mb-6 pb-4 border-b border-zinc-800">
+        <div className="flex items-center gap-6">
+          <div>
+            <p className="text-2xl font-bold text-green-400">{vaultStats.total_messages.toLocaleString()}</p>
+            <p className="text-xs text-zinc-500">messages indexed</p>
+          </div>
+        </div>
+        {isLocked && (
+          <div className="flex items-center gap-2 px-3 py-2 bg-red-500/10 border border-red-500/20 rounded-lg">
+            <Lock className="w-4 h-4 text-red-400" />
+            <span className="text-sm text-red-400">Enable Airplane Mode to search</span>
+          </div>
+        )}
       </div>
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto space-y-4 mb-4">
         {messages.length === 0 && (
           <div className="h-full flex items-center justify-center">
-            <div className="text-center text-zinc-500">
-              <Search className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p>Ask a question to search your memory</p>
-              <p className="text-sm mt-2">
-                Try: "When did I last talk to John about the project?"
+            <div className="text-center max-w-sm">
+              <div className="w-16 h-16 rounded-2xl bg-zinc-800 flex items-center justify-center mx-auto mb-4">
+                <Search className="w-8 h-8 text-zinc-600" />
+              </div>
+              <h3 className="text-lg font-medium mb-2">Search Your Memory</h3>
+              <p className="text-sm text-zinc-500 mb-4">
+                Ask anything about your WhatsApp conversations
               </p>
+              <div className="space-y-2 text-left">
+                <button 
+                  onClick={() => setInputValue("What did I talk about with Mom last week?")}
+                  className="w-full p-3 text-left text-sm bg-zinc-900 hover:bg-zinc-800 rounded-lg border border-zinc-800 transition-colors"
+                >
+                  "What did I talk about with Mom last week?"
+                </button>
+                <button 
+                  onClick={() => setInputValue("Find messages about dinner plans")}
+                  className="w-full p-3 text-left text-sm bg-zinc-900 hover:bg-zinc-800 rounded-lg border border-zinc-800 transition-colors"
+                >
+                  "Find messages about dinner plans"
+                </button>
+                <button 
+                  onClick={() => setInputValue("When did I promise to call John?")}
+                  className="w-full p-3 text-left text-sm bg-zinc-900 hover:bg-zinc-800 rounded-lg border border-zinc-800 transition-colors"
+                >
+                  "When did I promise to call John?"
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -587,16 +453,16 @@ function ChatView({
             className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
           >
             <div
-              className={`max-w-[80%] p-4 rounded-xl ${
+              className={`max-w-[85%] p-4 rounded-2xl ${
                 message.role === "user"
-                  ? "bg-vault-accent text-white"
-                  : "bg-vault-surface border border-vault-border"
+                  ? "bg-green-600 text-white"
+                  : "bg-zinc-800 border border-zinc-700"
               }`}
             >
               <p className="whitespace-pre-wrap">{message.content}</p>
               {message.sources && message.sources.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-vault-border/50">
-                  <p className="text-xs text-zinc-400 mb-1">Sources:</p>
+                <div className="mt-3 pt-3 border-t border-zinc-600/50">
+                  <p className="text-xs text-zinc-400 mb-1">From your chats:</p>
                   {message.sources.map((source, i) => (
                     <p key={i} className="text-xs text-zinc-500 truncate">
                       {source}
@@ -610,8 +476,8 @@ function ChatView({
         
         {isProcessing && (
           <div className="flex justify-start">
-            <div className="bg-vault-surface border border-vault-border p-4 rounded-xl">
-              <Loader2 className="w-5 h-5 animate-spin text-vault-accent" />
+            <div className="bg-zinc-800 border border-zinc-700 p-4 rounded-2xl">
+              <Loader2 className="w-5 h-5 animate-spin text-green-500" />
             </div>
           </div>
         )}
@@ -624,18 +490,14 @@ function ChatView({
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && onSend()}
-          placeholder={
-            networkStatus === "online"
-              ? "Enable Airplane Mode to query..."
-              : "Ask about your memories..."
-          }
-          disabled={networkStatus === "online" || isProcessing}
-          className="flex-1 bg-vault-surface border border-vault-border rounded-xl px-4 py-3 focus:outline-none focus:border-vault-accent disabled:opacity-50 disabled:cursor-not-allowed"
+          placeholder={isLocked ? "Enable Airplane Mode to search..." : "Ask about your messages..."}
+          disabled={isLocked || isProcessing}
+          className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 focus:outline-none focus:border-green-500 disabled:opacity-50 disabled:cursor-not-allowed placeholder:text-zinc-600"
         />
         <button
           onClick={onSend}
-          disabled={networkStatus === "online" || isProcessing || !inputValue.trim()}
-          className="px-5 py-3 bg-vault-accent text-white rounded-xl hover:bg-vault-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={isLocked || isProcessing || !inputValue.trim()}
+          className="px-5 py-3 bg-green-600 text-white rounded-xl hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Send className="w-5 h-5" />
         </button>
@@ -644,108 +506,108 @@ function ChatView({
   );
 }
 
-function PrivacyView({
+function SettingsView({
   federationStatus,
   onOptIn,
   onOptOut,
+  vaultStats,
+  onBack,
 }: {
   federationStatus: FederationStatus;
   onOptIn: () => void;
   onOptOut: () => void;
+  vaultStats: VaultStats;
+  onBack: () => void;
 }) {
   return (
-    <div className="fade-in max-w-2xl">
-      <h2 className="text-2xl font-semibold mb-2">Privacy & Federation</h2>
-      <p className="text-zinc-400 mb-8">
-        Control how your data contributes to collective intelligence - with mathematical privacy guarantees.
-      </p>
+    <div className="flex-1 max-w-2xl mx-auto w-full p-6">
+      <button
+        onClick={onBack}
+        className="text-zinc-500 hover:text-white mb-6 text-sm"
+      >
+        ← Back to Chat
+      </button>
 
-      {/* Current Status */}
-      <div className={`p-6 rounded-xl border mb-6 ${
-        federationStatus.opted_in
-          ? "bg-vault-accent/10 border-vault-accent/30"
-          : "bg-vault-surface border-vault-border"
-      }`}>
-        <div className="flex items-start gap-4">
-          {federationStatus.opted_in ? (
-            <CheckCircle2 className="w-8 h-8 text-vault-accent flex-shrink-0" />
-          ) : (
-            <Shield className="w-8 h-8 text-zinc-500 flex-shrink-0" />
-          )}
-          <div className="flex-1">
-            <h3 className={`text-lg font-semibold ${
-              federationStatus.opted_in ? "text-vault-accent" : "text-zinc-300"
-            }`}>
-              {federationStatus.opted_in 
-                ? "Federation Active" 
-                : "Local-Only Mode"}
-            </h3>
-            <p className="text-zinc-400 mt-1">
-              {federationStatus.opted_in
-                ? "Your anonymized embeddings help improve RAG for everyone. Raw messages never leave your device."
-                : "Your data stays 100% on this device. No sync, no sharing, complete isolation."}
-            </p>
+      <h2 className="text-2xl font-bold mb-2">Privacy Settings</h2>
+      <p className="text-zinc-400 mb-8">Control your data and contribute to collective AI</p>
+
+      {/* Vault Stats */}
+      <div className="bg-zinc-900 rounded-xl p-5 mb-6 border border-zinc-800">
+        <h3 className="font-medium mb-4">Your Vault</h3>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <p className="text-3xl font-bold text-green-400">{vaultStats.total_messages.toLocaleString()}</p>
+            <p className="text-sm text-zinc-500">WhatsApp messages</p>
+          </div>
+          <div>
+            <p className="text-3xl font-bold">{vaultStats.sources.length}</p>
+            <p className="text-sm text-zinc-500">data sources</p>
           </div>
         </div>
       </div>
 
-      {/* Stats */}
-      {federationStatus.opted_in && (
-        <div className="grid grid-cols-2 gap-4 mb-8">
-          <div className="bg-vault-surface border border-vault-border rounded-xl p-5">
-            <p className="text-zinc-400 text-sm">Embeddings Contributed</p>
-            <p className="text-2xl font-semibold">{federationStatus.embeddings_contributed.toLocaleString()}</p>
+      {/* Federation */}
+      <div className={`rounded-xl p-5 mb-6 border ${
+        federationStatus.opted_in 
+          ? "bg-green-500/10 border-green-500/30" 
+          : "bg-zinc-900 border-zinc-800"
+      }`}>
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <h3 className="font-medium flex items-center gap-2">
+              <Users className="w-5 h-5" />
+              Collective Intelligence
+            </h3>
+            <p className="text-sm text-zinc-400 mt-1">
+              Help improve AI for everyone with anonymized data
+            </p>
           </div>
-          <div className="bg-vault-surface border border-vault-border rounded-xl p-5">
-            <p className="text-zinc-400 text-sm">Collective Users</p>
-            <p className="text-2xl font-semibold">{federationStatus.collective_users.toLocaleString()}</p>
-          </div>
+          <button
+            onClick={federationStatus.opted_in ? onOptOut : onOptIn}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              federationStatus.opted_in
+                ? "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+                : "bg-green-600 text-white hover:bg-green-700"
+            }`}
+          >
+            {federationStatus.opted_in ? "Opt Out" : "Opt In"}
+          </button>
         </div>
-      )}
 
-      {/* Privacy Guarantees */}
-      <div className="bg-vault-surface border border-vault-border rounded-xl p-5 mb-6">
-        <h4 className="font-semibold mb-3">Privacy Guarantees</h4>
-        <ul className="space-y-2 text-sm text-zinc-400">
-          <li className="flex items-start gap-2">
-            <CheckCircle2 className="w-4 h-4 text-vault-accent mt-0.5 flex-shrink-0" />
-            <span><strong className="text-zinc-300">Differential Privacy:</strong> Mathematical noise added to embeddings - individual messages cannot be reconstructed</span>
+        <div className="space-y-2 text-sm text-zinc-500">
+          <p className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-green-500" />
+            Only anonymized embeddings shared - never raw messages
+          </p>
+          <p className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-green-500" />
+            Differential privacy ensures your data can't be reconstructed
+          </p>
+          <p className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-green-500" />
+            You can opt out anytime - we delete your contributions
+          </p>
+        </div>
+      </div>
+
+      {/* Privacy Info */}
+      <div className="bg-zinc-900 rounded-xl p-5 border border-zinc-800">
+        <h3 className="font-medium mb-3">How Your Data is Protected</h3>
+        <ul className="space-y-3 text-sm text-zinc-400">
+          <li className="flex items-start gap-3">
+            <WifiOff className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+            <span>AI queries only work in Airplane Mode - we literally can't phone home</span>
           </li>
-          <li className="flex items-start gap-2">
-            <CheckCircle2 className="w-4 h-4 text-vault-accent mt-0.5 flex-shrink-0" />
-            <span><strong className="text-zinc-300">No Raw Text:</strong> Only embeddings (numerical vectors) are synced - never your actual messages</span>
+          <li className="flex items-start gap-3">
+            <Shield className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+            <span>All processing happens on your device - messages never leave</span>
           </li>
-          <li className="flex items-start gap-2">
-            <CheckCircle2 className="w-4 h-4 text-vault-accent mt-0.5 flex-shrink-0" />
-            <span><strong className="text-zinc-300">Anonymous ID:</strong> Your contributions are linked to a random UUID, not your identity</span>
-          </li>
-          <li className="flex items-start gap-2">
-            <CheckCircle2 className="w-4 h-4 text-vault-accent mt-0.5 flex-shrink-0" />
-            <span><strong className="text-zinc-300">SOC 2 Compliant:</strong> Infrastructure audited for security, availability, and confidentiality</span>
+          <li className="flex items-start gap-3">
+            <Lock className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+            <span>SOC 2 compliant infrastructure for any synced data</span>
           </li>
         </ul>
       </div>
-
-      {/* Action Button */}
-      {federationStatus.opted_in ? (
-        <button
-          onClick={onOptOut}
-          className="w-full p-4 bg-vault-danger/20 border border-vault-danger/30 text-vault-danger rounded-xl hover:bg-vault-danger/30 transition-colors"
-        >
-          Opt Out of Federation
-        </button>
-      ) : (
-        <button
-          onClick={onOptIn}
-          className="w-full p-4 bg-vault-accent text-white rounded-xl hover:bg-vault-accent/90 transition-colors"
-        >
-          Opt In to Collective Intelligence
-        </button>
-      )}
-
-      <p className="text-xs text-zinc-500 mt-4 text-center">
-        You can change this setting at any time. Opting out deletes your contributed embeddings from our servers.
-      </p>
     </div>
   );
 }
