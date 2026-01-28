@@ -24,6 +24,7 @@ regex = "1"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4"] }
 fastembed = "4"
+rand = "0.8"
 rayon = "1.10"
 dirs = "5"
 walkdir = "2"

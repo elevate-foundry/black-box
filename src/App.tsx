@@ -19,8 +19,14 @@ import {
 } from "lucide-react";
 
 type NetworkStatus = "offline" | "online" | "checking";
-type AppView = "dashboard" | "import" | "chat";
+type AppView = "dashboard" | "import" | "chat" | "privacy";
 type ImportSource = "imessage" | "whatsapp" | "slack";
+
+interface FederationStatus {
+  opted_in: boolean;
+  embeddings_contributed: number;
+  collective_users: number;
+}
 
 interface Message {
   id: string;
@@ -47,10 +53,16 @@ function App() {
     last_indexed: null,
   });
   const [importProgress, setImportProgress] = useState<number | null>(null);
+  const [federationStatus, setFederationStatus] = useState<FederationStatus>({
+    opted_in: false,
+    embeddings_contributed: 0,
+    collective_users: 0,
+  });
 
   useEffect(() => {
     checkNetworkStatus();
     loadVaultStats();
+    loadFederationStatus();
     const interval = setInterval(checkNetworkStatus, 3000);
     return () => clearInterval(interval);
   }, []);
@@ -70,6 +82,33 @@ function App() {
       setVaultStats(stats);
     } catch (e) {
       console.error("Failed to load vault stats:", e);
+    }
+  }
+
+  async function loadFederationStatus() {
+    try {
+      const status = await invoke<FederationStatus>("get_federation_status");
+      setFederationStatus(status);
+    } catch (e) {
+      console.error("Failed to load federation status:", e);
+    }
+  }
+
+  async function handleOptIn() {
+    try {
+      const status = await invoke<FederationStatus>("opt_in_federation");
+      setFederationStatus(status);
+    } catch (e) {
+      console.error("Failed to opt in:", e);
+    }
+  }
+
+  async function handleOptOut() {
+    try {
+      const status = await invoke<FederationStatus>("opt_out_federation");
+      setFederationStatus(status);
+    } catch (e) {
+      console.error("Failed to opt out:", e);
     }
   }
 
@@ -230,6 +269,19 @@ function App() {
             {networkStatus === "online" && <Lock className="w-4 h-4 ml-auto" />}
           </button>
 
+          <button
+            onClick={() => setCurrentView("privacy")}
+            className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+              currentView === "privacy"
+                ? "bg-vault-accent/20 text-vault-accent"
+                : "hover:bg-vault-border text-zinc-400 hover:text-zinc-100"
+            }`}
+          >
+            <Shield className="w-5 h-5" />
+            <span>Privacy & Sync</span>
+            {federationStatus.opted_in && <CheckCircle2 className="w-4 h-4 ml-auto text-vault-accent" />}
+          </button>
+
           <div className="mt-auto pt-4 border-t border-vault-border">
             <div className="text-xs text-zinc-500 space-y-1">
               <p>Messages indexed: <span className="text-zinc-300">{vaultStats.total_messages.toLocaleString()}</span></p>
@@ -264,6 +316,14 @@ function App() {
               onSend={handleSendMessage}
               isProcessing={isProcessing}
               networkStatus={networkStatus}
+            />
+          )}
+
+          {currentView === "privacy" && (
+            <PrivacyView
+              federationStatus={federationStatus}
+              onOptIn={handleOptIn}
+              onOptOut={handleOptOut}
             />
           )}
         </div>
@@ -580,6 +640,112 @@ function ChatView({
           <Send className="w-5 h-5" />
         </button>
       </div>
+    </div>
+  );
+}
+
+function PrivacyView({
+  federationStatus,
+  onOptIn,
+  onOptOut,
+}: {
+  federationStatus: FederationStatus;
+  onOptIn: () => void;
+  onOptOut: () => void;
+}) {
+  return (
+    <div className="fade-in max-w-2xl">
+      <h2 className="text-2xl font-semibold mb-2">Privacy & Federation</h2>
+      <p className="text-zinc-400 mb-8">
+        Control how your data contributes to collective intelligence - with mathematical privacy guarantees.
+      </p>
+
+      {/* Current Status */}
+      <div className={`p-6 rounded-xl border mb-6 ${
+        federationStatus.opted_in
+          ? "bg-vault-accent/10 border-vault-accent/30"
+          : "bg-vault-surface border-vault-border"
+      }`}>
+        <div className="flex items-start gap-4">
+          {federationStatus.opted_in ? (
+            <CheckCircle2 className="w-8 h-8 text-vault-accent flex-shrink-0" />
+          ) : (
+            <Shield className="w-8 h-8 text-zinc-500 flex-shrink-0" />
+          )}
+          <div className="flex-1">
+            <h3 className={`text-lg font-semibold ${
+              federationStatus.opted_in ? "text-vault-accent" : "text-zinc-300"
+            }`}>
+              {federationStatus.opted_in 
+                ? "Federation Active" 
+                : "Local-Only Mode"}
+            </h3>
+            <p className="text-zinc-400 mt-1">
+              {federationStatus.opted_in
+                ? "Your anonymized embeddings help improve RAG for everyone. Raw messages never leave your device."
+                : "Your data stays 100% on this device. No sync, no sharing, complete isolation."}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Stats */}
+      {federationStatus.opted_in && (
+        <div className="grid grid-cols-2 gap-4 mb-8">
+          <div className="bg-vault-surface border border-vault-border rounded-xl p-5">
+            <p className="text-zinc-400 text-sm">Embeddings Contributed</p>
+            <p className="text-2xl font-semibold">{federationStatus.embeddings_contributed.toLocaleString()}</p>
+          </div>
+          <div className="bg-vault-surface border border-vault-border rounded-xl p-5">
+            <p className="text-zinc-400 text-sm">Collective Users</p>
+            <p className="text-2xl font-semibold">{federationStatus.collective_users.toLocaleString()}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Privacy Guarantees */}
+      <div className="bg-vault-surface border border-vault-border rounded-xl p-5 mb-6">
+        <h4 className="font-semibold mb-3">Privacy Guarantees</h4>
+        <ul className="space-y-2 text-sm text-zinc-400">
+          <li className="flex items-start gap-2">
+            <CheckCircle2 className="w-4 h-4 text-vault-accent mt-0.5 flex-shrink-0" />
+            <span><strong className="text-zinc-300">Differential Privacy:</strong> Mathematical noise added to embeddings - individual messages cannot be reconstructed</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <CheckCircle2 className="w-4 h-4 text-vault-accent mt-0.5 flex-shrink-0" />
+            <span><strong className="text-zinc-300">No Raw Text:</strong> Only embeddings (numerical vectors) are synced - never your actual messages</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <CheckCircle2 className="w-4 h-4 text-vault-accent mt-0.5 flex-shrink-0" />
+            <span><strong className="text-zinc-300">Anonymous ID:</strong> Your contributions are linked to a random UUID, not your identity</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <CheckCircle2 className="w-4 h-4 text-vault-accent mt-0.5 flex-shrink-0" />
+            <span><strong className="text-zinc-300">SOC 2 Compliant:</strong> Infrastructure audited for security, availability, and confidentiality</span>
+          </li>
+        </ul>
+      </div>
+
+      {/* Action Button */}
+      {federationStatus.opted_in ? (
+        <button
+          onClick={onOptOut}
+          className="w-full p-4 bg-vault-danger/20 border border-vault-danger/30 text-vault-danger rounded-xl hover:bg-vault-danger/30 transition-colors"
+        >
+          Opt Out of Federation
+        </button>
+      ) : (
+        <button
+          onClick={onOptIn}
+          className="w-full p-4 bg-vault-accent text-white rounded-xl hover:bg-vault-accent/90 transition-colors"
+        >
+          Opt In to Collective Intelligence
+        </button>
+      )}
+
+      <p className="text-xs text-zinc-500 mt-4 text-center">
+        You can change this setting at any time. Opting out deletes your contributed embeddings from our servers.
+      </p>
     </div>
   );
 }

@@ -244,6 +244,7 @@ dependencies = [
  "chrono",
  "dirs 5.0.1",
  "fastembed",
+ "rand 0.8.5",
  "rayon",
  "regex",
  "rusqlite",

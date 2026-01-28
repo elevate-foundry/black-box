@@ -2,6 +2,7 @@ mod ingestors;
 mod embeddings;
 mod vector_store;
 mod llm;
+mod federation;
 
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
@@ -11,6 +12,7 @@ pub struct AppState {
     pub vector_store: Mutex<vector_store::VectorStore>,
     pub embedder: Mutex<Option<embeddings::Embedder>>,
     pub llm: Mutex<Option<llm::LocalLLM>>,
+    pub federation: Mutex<federation::FederationClient>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -141,6 +143,45 @@ async fn query_vault(prompt: String, state: State<'_, AppState>) -> Result<Query
     Ok(QueryResponse { answer, sources })
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FederationStatus {
+    pub opted_in: bool,
+    pub embeddings_contributed: usize,
+    pub collective_users: usize,
+}
+
+#[tauri::command]
+fn get_federation_status(state: State<AppState>) -> Result<FederationStatus, String> {
+    let federation = state.federation.lock().map_err(|e| e.to_string())?;
+    Ok(FederationStatus {
+        opted_in: federation.is_opted_in(),
+        embeddings_contributed: 0,
+        collective_users: 0,
+    })
+}
+
+#[tauri::command]
+fn opt_in_federation(state: State<AppState>) -> Result<FederationStatus, String> {
+    let mut federation = state.federation.lock().map_err(|e| e.to_string())?;
+    federation.opt_in();
+    Ok(FederationStatus {
+        opted_in: true,
+        embeddings_contributed: 0,
+        collective_users: 0,
+    })
+}
+
+#[tauri::command]
+fn opt_out_federation(state: State<AppState>) -> Result<FederationStatus, String> {
+    let mut federation = state.federation.lock().map_err(|e| e.to_string())?;
+    federation.opt_out();
+    Ok(FederationStatus {
+        opted_in: false,
+        embeddings_contributed: 0,
+        collective_users: 0,
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let data_dir = dirs::data_local_dir()
@@ -159,12 +200,18 @@ pub fn run() {
             vector_store: Mutex::new(vector_store),
             embedder: Mutex::new(None),
             llm: Mutex::new(None),
+            federation: Mutex::new(federation::FederationClient::new(
+                federation::FederationConfig::default()
+            )),
         })
         .invoke_handler(tauri::generate_handler![
             check_offline_status,
             get_vault_stats,
             import_messages,
             query_vault,
+            get_federation_status,
+            opt_in_federation,
+            opt_out_federation,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
