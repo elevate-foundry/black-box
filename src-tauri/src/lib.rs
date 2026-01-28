@@ -60,10 +60,16 @@ fn get_vault_stats(state: State<AppState>) -> Result<VaultStats, String> {
 }
 
 #[tauri::command]
-async fn import_messages(source: String, state: State<'_, AppState>) -> Result<(), String> {
+async fn import_messages(source: String, file_path: Option<String>, state: State<'_, AppState>) -> Result<(), String> {
     let messages = match source.as_str() {
         "imessage" => ingestors::imessage::import()?,
-        "whatsapp" => ingestors::whatsapp::import()?,
+        "whatsapp" => {
+            if let Some(path) = file_path {
+                ingestors::whatsapp::import_from_file(&path)?
+            } else {
+                ingestors::whatsapp::import()?
+            }
+        },
         "slack" => ingestors::slack::import()?,
         _ => return Err(format!("Unknown source: {}", source)),
     };
@@ -148,6 +154,7 @@ pub fn run() {
     
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(AppState {
             vector_store: Mutex::new(vector_store),
             embedder: Mutex::new(None),

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import { 
   Shield, 
   Wifi, 
@@ -13,7 +14,8 @@ import {
   Database,
   Brain,
   CheckCircle2,
-  AlertTriangle
+  AlertTriangle,
+  FileText
 } from "lucide-react";
 
 type NetworkStatus = "offline" | "online" | "checking";
@@ -71,10 +73,10 @@ function App() {
     }
   }
 
-  async function handleImport(source: ImportSource) {
+  async function handleImport(source: ImportSource, filePath?: string) {
     setImportProgress(0);
     try {
-      await invoke("import_messages", { source });
+      await invoke("import_messages", { source, filePath });
       setImportProgress(100);
       await loadVaultStats();
       setTimeout(() => {
@@ -84,6 +86,25 @@ function App() {
     } catch (e) {
       console.error("Import failed:", e);
       setImportProgress(null);
+      alert(`Import failed: ${e}`);
+    }
+  }
+
+  async function handleWhatsAppFilePicker() {
+    try {
+      const selected = await open({
+        multiple: false,
+        filters: [
+          { name: "WhatsApp Export", extensions: ["txt", "zip"] }
+        ],
+        title: "Select WhatsApp Chat Export"
+      });
+      
+      if (selected && typeof selected === "string") {
+        await handleImport("whatsapp", selected);
+      }
+    } catch (e) {
+      console.error("File picker error:", e);
     }
   }
 
@@ -230,6 +251,7 @@ function App() {
           {currentView === "import" && (
             <ImportView 
               onImport={handleImport}
+              onWhatsAppFilePicker={handleWhatsAppFilePicker}
               progress={importProgress}
             />
           )}
@@ -359,33 +381,14 @@ function DashboardView({
 }
 
 function ImportView({ 
-  onImport, 
+  onImport,
+  onWhatsAppFilePicker,
   progress 
 }: { 
   onImport: (source: ImportSource) => void;
+  onWhatsAppFilePicker: () => void;
   progress: number | null;
 }) {
-  const sources: { id: ImportSource; name: string; description: string; icon: string }[] = [
-    {
-      id: "imessage",
-      name: "iMessage",
-      description: "Import from your local chat.db (requires Full Disk Access)",
-      icon: "💬",
-    },
-    {
-      id: "whatsapp",
-      name: "WhatsApp",
-      description: "Import from WhatsApp chat export (.txt files)",
-      icon: "📱",
-    },
-    {
-      id: "slack",
-      name: "Slack",
-      description: "Import from Slack workspace export (JSON)",
-      icon: "💼",
-    },
-  ];
-
   return (
     <div className="fade-in max-w-2xl">
       <h2 className="text-2xl font-semibold mb-2">Import Your Data</h2>
@@ -409,27 +412,59 @@ function ImportView({
       )}
 
       <div className="space-y-4">
-        {sources.map((source) => (
-          <button
-            key={source.id}
-            onClick={() => onImport(source.id)}
-            disabled={progress !== null}
-            className="w-full flex items-center gap-4 p-5 bg-vault-surface border border-vault-border rounded-xl hover:border-vault-accent/50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <span className="text-3xl">{source.icon}</span>
-            <div className="flex-1">
-              <p className="font-medium">{source.name}</p>
-              <p className="text-sm text-zinc-500">{source.description}</p>
-            </div>
-            <Upload className="w-5 h-5 text-zinc-500" />
-          </button>
-        ))}
+        {/* iMessage */}
+        <button
+          onClick={() => onImport("imessage")}
+          disabled={progress !== null}
+          className="w-full flex items-center gap-4 p-5 bg-vault-surface border border-vault-border rounded-xl hover:border-vault-accent/50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <span className="text-3xl">💬</span>
+          <div className="flex-1">
+            <p className="font-medium">iMessage</p>
+            <p className="text-sm text-zinc-500">Import from your local chat.db (requires Full Disk Access)</p>
+          </div>
+          <Upload className="w-5 h-5 text-zinc-500" />
+        </button>
+
+        {/* WhatsApp - with file picker */}
+        <button
+          onClick={onWhatsAppFilePicker}
+          disabled={progress !== null}
+          className="w-full flex items-center gap-4 p-5 bg-vault-surface border border-vault-border rounded-xl hover:border-vault-accent/50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <span className="text-3xl">📱</span>
+          <div className="flex-1">
+            <p className="font-medium">WhatsApp</p>
+            <p className="text-sm text-zinc-500">Select your WhatsApp chat export file (.txt)</p>
+          </div>
+          <FileText className="w-5 h-5 text-zinc-500" />
+        </button>
+
+        {/* Slack */}
+        <button
+          onClick={() => onImport("slack")}
+          disabled={progress !== null}
+          className="w-full flex items-center gap-4 p-5 bg-vault-surface border border-vault-border rounded-xl hover:border-vault-accent/50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <span className="text-3xl">💼</span>
+          <div className="flex-1">
+            <p className="font-medium">Slack</p>
+            <p className="text-sm text-zinc-500">Import from Slack workspace export (JSON)</p>
+          </div>
+          <Upload className="w-5 h-5 text-zinc-500" />
+        </button>
       </div>
 
       <div className="mt-8 p-4 bg-vault-surface/50 border border-vault-border rounded-xl">
         <p className="text-sm text-zinc-500">
           <strong className="text-zinc-300">Privacy Note:</strong> Your data never leaves this device. 
           The Black Box creates a local vector index for semantic search. No cloud. No sync. No leaks.
+        </p>
+      </div>
+
+      <div className="mt-4 p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl">
+        <p className="text-sm text-blue-300">
+          <strong>How to export WhatsApp chats:</strong> Open WhatsApp → Select a chat → Tap ⋮ (menu) → More → Export chat → Without media → Save the .txt file
         </p>
       </div>
     </div>

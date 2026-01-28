@@ -1,5 +1,6 @@
 use regex::Regex;
 use std::fs;
+use std::path::Path;
 use walkdir::WalkDir;
 
 pub fn import() -> Result<Vec<String>, String> {
@@ -35,11 +36,25 @@ pub fn import() -> Result<Vec<String>, String> {
     
     if all_messages.is_empty() {
         return Err(
-            "No WhatsApp exports found. Please export a chat from WhatsApp and place the .txt file in your Downloads or Documents folder.".to_string()
+            "No WhatsApp exports found. Please use 'Import File' to select your WhatsApp chat export.".to_string()
         );
     }
     
     Ok(all_messages)
+}
+
+pub fn import_from_file(file_path: &str) -> Result<Vec<String>, String> {
+    let path = Path::new(file_path);
+    
+    if !path.exists() {
+        return Err(format!("File not found: {}", file_path));
+    }
+    
+    if !path.is_file() {
+        return Err(format!("Not a file: {}", file_path));
+    }
+    
+    parse_whatsapp_file(path)
 }
 
 fn parse_whatsapp_file(path: &std::path::Path) -> Result<Vec<String>, String> {
