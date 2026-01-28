@@ -426,16 +426,30 @@ function ImportView({
           <Upload className="w-5 h-5 text-zinc-500" />
         </button>
 
-        {/* WhatsApp - with file picker */}
+        {/* WhatsApp - direct from local database */}
         <button
-          onClick={onWhatsAppFilePicker}
+          onClick={() => onImport("whatsapp")}
           disabled={progress !== null}
           className="w-full flex items-center gap-4 p-5 bg-vault-surface border border-vault-border rounded-xl hover:border-vault-accent/50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <span className="text-3xl">📱</span>
           <div className="flex-1">
-            <p className="font-medium">WhatsApp</p>
-            <p className="text-sm text-zinc-500">Select your WhatsApp chat export file (.txt)</p>
+            <p className="font-medium">WhatsApp Desktop</p>
+            <p className="text-sm text-zinc-500">Import directly from WhatsApp Desktop (no export needed!)</p>
+          </div>
+          <Database className="w-5 h-5 text-vault-accent" />
+        </button>
+        
+        {/* WhatsApp - file picker fallback */}
+        <button
+          onClick={onWhatsAppFilePicker}
+          disabled={progress !== null}
+          className="w-full flex items-center gap-4 p-5 bg-vault-surface/50 border border-vault-border rounded-xl hover:border-vault-accent/50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <span className="text-3xl">�</span>
+          <div className="flex-1">
+            <p className="font-medium">WhatsApp Export File</p>
+            <p className="text-sm text-zinc-500">Or select a .txt export file manually</p>
           </div>
           <FileText className="w-5 h-5 text-zinc-500" />
         </button>
@@ -462,9 +476,9 @@ function ImportView({
         </p>
       </div>
 
-      <div className="mt-4 p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl">
-        <p className="text-sm text-blue-300">
-          <strong>How to export WhatsApp chats:</strong> Open WhatsApp → Select a chat → Tap ⋮ (menu) → More → Export chat → Without media → Save the .txt file
+      <div className="mt-4 p-4 bg-vault-accent/10 border border-vault-accent/30 rounded-xl">
+        <p className="text-sm text-vault-accent">
+          <strong>WhatsApp Desktop detected!</strong> Click "WhatsApp Desktop" to import your messages directly - no export needed. Your messages are stored locally in plaintext.
         </p>
       </div>
     </div>

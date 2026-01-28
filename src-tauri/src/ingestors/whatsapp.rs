@@ -1,9 +1,18 @@
 use regex::Regex;
+use rusqlite::Connection;
 use std::fs;
 use std::path::Path;
 use walkdir::WalkDir;
 
 pub fn import() -> Result<Vec<String>, String> {
+    // Try to read from WhatsApp Desktop's local SQLite database first
+    if let Ok(messages) = import_from_local_db() {
+        if !messages.is_empty() {
+            return Ok(messages);
+        }
+    }
+    
+    // Fallback to searching for export files
     let downloads_dir = dirs::download_dir()
         .ok_or_else(|| "Could not find Downloads directory".to_string())?;
     
@@ -36,11 +45,62 @@ pub fn import() -> Result<Vec<String>, String> {
     
     if all_messages.is_empty() {
         return Err(
-            "No WhatsApp exports found. Please use 'Import File' to select your WhatsApp chat export.".to_string()
+            "No WhatsApp data found. Make sure WhatsApp Desktop is installed, or use 'Import File' to select an export.".to_string()
         );
     }
     
     Ok(all_messages)
+}
+
+pub fn import_from_local_db() -> Result<Vec<String>, String> {
+    let home = dirs::home_dir()
+        .ok_or_else(|| "Could not find home directory".to_string())?;
+    
+    let db_path = home
+        .join("Library")
+        .join("Group Containers")
+        .join("group.net.whatsapp.WhatsApp.shared")
+        .join("ChatStorage.sqlite");
+    
+    if !db_path.exists() {
+        return Err("WhatsApp Desktop database not found. Is WhatsApp Desktop installed?".to_string());
+    }
+    
+    let conn = Connection::open(&db_path)
+        .map_err(|e| format!("Failed to open WhatsApp database: {}", e))?;
+    
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT 
+            COALESCE(m.ZTEXT, '') as text,
+            COALESCE(m.ZPUSHNAME, COALESCE(m.ZFROMJID, 'Unknown')) as sender,
+            datetime(m.ZMESSAGEDATE + 978307200, 'unixepoch', 'localtime') as timestamp,
+            CASE WHEN m.ZISFROMME = 1 THEN 'Me' ELSE COALESCE(m.ZPUSHNAME, 'Unknown') END as display_sender
+        FROM ZWAMESSAGE m
+        WHERE m.ZTEXT IS NOT NULL AND m.ZTEXT != ''
+        ORDER BY m.ZMESSAGEDATE DESC
+        LIMIT 100000
+        "#
+    ).map_err(|e| format!("Failed to prepare query: {}", e))?;
+    
+    let messages: Vec<String> = stmt.query_map([], |row| {
+        let text: String = row.get(0)?;
+        let display_sender: String = row.get(3)?;
+        let timestamp: String = row.get(2)?;
+        Ok(format!("[{}] {}: {}", timestamp, display_sender, text))
+    })
+    .map_err(|e| format!("Failed to query messages: {}", e))?
+    .filter_map(|r| r.ok())
+    .filter(|msg| !msg.is_empty())
+    .collect();
+    
+    if messages.is_empty() {
+        return Err("No messages found in WhatsApp database.".to_string());
+    }
+    
+    println!("Found {} WhatsApp messages from local database", messages.len());
+    
+    Ok(messages)
 }
 
 pub fn import_from_file(file_path: &str) -> Result<Vec<String>, String> {
