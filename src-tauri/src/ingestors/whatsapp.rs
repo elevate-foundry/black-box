@@ -103,6 +103,126 @@ pub fn import_from_local_db() -> Result<Vec<String>, String> {
     Ok(messages)
 }
 
+pub fn get_contact_names() -> Result<Vec<String>, String> {
+    let home = dirs::home_dir()
+        .ok_or_else(|| "Could not find home directory".to_string())?;
+    
+    let db_path = home
+        .join("Library")
+        .join("Group Containers")
+        .join("group.net.whatsapp.WhatsApp.shared")
+        .join("ChatStorage.sqlite");
+    
+    if !db_path.exists() {
+        return Ok(vec![]);
+    }
+    
+    let conn = Connection::open(&db_path)
+        .map_err(|e| format!("Failed to open WhatsApp database: {}", e))?;
+    
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT DISTINCT ZPUSHNAME 
+        FROM ZWAMESSAGE 
+        WHERE ZPUSHNAME IS NOT NULL 
+          AND ZPUSHNAME != '' 
+          AND ZISFROMME = 0
+          AND LENGTH(ZPUSHNAME) > 2
+          AND ZPUSHNAME NOT LIKE '%@%'
+        ORDER BY COUNT(*) DESC
+        LIMIT 20
+        "#
+    ).map_err(|e| format!("Failed to prepare query: {}", e))?;
+    
+    let names: Vec<String> = stmt.query_map([], |row| {
+        let name: String = row.get(0)?;
+        Ok(name)
+    })
+    .map_err(|e| format!("Failed to query contacts: {}", e))?
+    .filter_map(|r| r.ok())
+    .filter(|name| {
+        let n = name.trim();
+        n.len() >= 2 
+            && !n.contains('@') 
+            && !n.chars().all(|c| c.is_uppercase() || c.is_numeric())
+            && n.chars().next().map(|c| c.is_alphabetic()).unwrap_or(false)
+    })
+    .collect();
+    
+    Ok(names)
+}
+
+pub fn get_recent_topics() -> Result<Vec<String>, String> {
+    let home = dirs::home_dir()
+        .ok_or_else(|| "Could not find home directory".to_string())?;
+    
+    let db_path = home
+        .join("Library")
+        .join("Group Containers")
+        .join("group.net.whatsapp.WhatsApp.shared")
+        .join("ChatStorage.sqlite");
+    
+    if !db_path.exists() {
+        return Ok(vec![]);
+    }
+    
+    let conn = Connection::open(&db_path)
+        .map_err(|e| format!("Failed to open WhatsApp database: {}", e))?;
+    
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT ZTEXT 
+        FROM ZWAMESSAGE 
+        WHERE ZTEXT IS NOT NULL AND ZTEXT != ''
+        ORDER BY ZMESSAGEDATE DESC
+        LIMIT 200
+        "#
+    ).map_err(|e| format!("Failed to prepare query: {}", e))?;
+    
+    let messages: Vec<String> = stmt.query_map([], |row| row.get(0))
+        .map_err(|e| format!("Failed to query: {}", e))?
+        .filter_map(|r| r.ok())
+        .collect();
+    
+    let topic_keywords = [
+        ("dinner", "dinner plans"),
+        ("lunch", "lunch"),
+        ("meeting", "the meeting"),
+        ("call", "calling"),
+        ("trip", "the trip"),
+        ("vacation", "vacation"),
+        ("birthday", "birthday"),
+        ("wedding", "the wedding"),
+        ("party", "the party"),
+        ("job", "the job"),
+        ("interview", "the interview"),
+        ("project", "the project"),
+        ("doctor", "the doctor"),
+        ("appointment", "the appointment"),
+        ("flight", "the flight"),
+        ("movie", "movies"),
+        ("game", "the game"),
+        ("concert", "the concert"),
+        ("gym", "the gym"),
+        ("school", "school"),
+    ];
+    
+    let mut found_topics = Vec::new();
+    for msg in &messages {
+        let lower = msg.to_lowercase();
+        for (keyword, display) in &topic_keywords {
+            if lower.contains(keyword) && !found_topics.contains(&display.to_string()) {
+                found_topics.push(display.to_string());
+                if found_topics.len() >= 5 {
+                    return Ok(found_topics);
+                }
+            }
+        }
+    }
+    
+    Ok(found_topics)
+}
+
 pub fn import_from_file(file_path: &str) -> Result<Vec<String>, String> {
     let path = Path::new(file_path);
     
