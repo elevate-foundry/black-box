@@ -246,3 +246,17 @@ Key theorems implemented:
 ## License
 
 Proprietary - All rights reserved.
+
+<!-- ELEVATE:BEGIN (auto-generated section; edits here are overwritten) -->
+## About
+
+| | |
+| --- | --- |
+| **Description** | The Black Box - Your Offline Digital Vault. A local-first, privacy-focused AI that ingests your life without leaking a single byte. |
+| **Language** | Rust |
+| **Commits** | 29 |
+| **Created** | 2026-01-28 |
+| **Last push** | 2026-01-28 |
+
+Part of [**elevate-foundry**](https://github.com/elevate-foundry) · [repository](https://github.com/elevate-foundry/black-box)
+<!-- ELEVATE:END -->
